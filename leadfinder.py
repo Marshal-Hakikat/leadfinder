@@ -31,7 +31,7 @@ import requests
 # --------------------------------------------------------------------------
 USER_AGENT = os.environ.get(
     "LEADFINDER_USER_AGENT",
-    "cleanslate-leadfinder/0.1 (contact: you@example.com)",  # put your email here
+    "cleanslate-leadfinder/0.1 (contact: marshal.hakikat@gmail.com)",  # put your email here
 )
 NOTIFY_MIN_SCORE = 7  # webhook alert only for new leads at or above this score
 
