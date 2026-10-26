@@ -1,0 +1,41 @@
+name: Find leads
+
+on:
+  schedule:
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: find-leads
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      - name: Search, score and write the dashboard data
+        env:
+          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python leadfinder.py run --db data/leads.db --out docs
+
+      - name: Save results back to the repo
+        run: |
+          git config user.name "leadfinder-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data docs
+          git diff --staged --quiet || git commit -m "Update leads"
+          git push
