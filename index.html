@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CleanSlate Leads</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#667085; --line:#e4e7ec;
+    --accent:#1d4ed8; --good:#15803d; --warn:#b45309; --low:#98a2b3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1216; --card:#181c22; --text:#e8eaed; --muted:#9aa4b2; --line:#2a303a;
+           --accent:#7aa2ff; --good:#4ade80; --warn:#fbbf24; --low:#6b7686; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:1.35rem;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:.85rem;margin-bottom:16px}
+  .filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .filters select,.filters input,.filters button{
+    font:inherit;font-size:.85rem;padding:6px 10px;border:1px solid var(--line);
+    border-radius:8px;background:var(--card);color:var(--text)}
+  .filters input{flex:1;min-width:150px}
+  .filters button{cursor:pointer}
+  .stats{color:var(--muted);font-size:.85rem;margin:6px 0 14px}
+  .card{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--low);
+        border-radius:10px;padding:12px 14px;margin:10px 0}
+  .card.hi{border-left-color:var(--good)} .card.mid{border-left-color:var(--warn)}
+  .card.done{opacity:.6}
+  .top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:4px}
+  .score{font-weight:700;font-size:1.05rem}
+  .tag{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);
+       border-radius:5px;padding:1px 8px;font-size:.75rem}
+  .new{background:var(--good);color:#fff;border-radius:5px;padding:1px 7px;font-size:.7rem;font-weight:700}
+  .meta{color:var(--muted);font-size:.8rem}
+  .title{display:block;font-weight:600;color:var(--accent);text-decoration:none;margin:2px 0 4px}
+  .title:hover{text-decoration:underline}
+  .snip{color:var(--muted);margin:4px 0;font-size:.88rem}
+  .why{color:var(--muted);font-size:.78rem;margin:2px 0 8px}
+  .actions{display:flex;flex-wrap:wrap;gap:6px}
+  .actions button{font:inherit;font-size:.78rem;padding:3px 10px;border-radius:999px;
+    border:1px solid var(--line);background:transparent;color:var(--text);cursor:pointer}
+  .actions button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .empty{text-align:center;color:var(--muted);padding:40px 10px;border:1px dashed var(--line);border-radius:10px}
+  footer{color:var(--muted);font-size:.78rem;margin-top:24px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CleanSlate Leads</h1>
+  <div class="sub" id="updated">Loading…</div>
+
+  <div class="filters">
+    <select id="fScore" title="Minimum score">
+      <option value="3">Score 3+</option><option value="4">Score 4+</option>
+      <option value="5" selected>Score 5+</option><option value="7">Score 7+</option>
+      <option value="9">Score 9+</option>
+    </select>
+    <select id="fIntent" title="Type"><option value="">All types</option></select>
+    <select id="fSource" title="Source"><option value="">All sources</option></select>
+    <select id="fStatus" title="Status">
+      <option value="open" selected>Open (hide ignored)</option>
+      <option value="">All</option>
+      <option value="new">New</option><option value="replied">Replied</option>
+      <option value="interested">Interested</option><option value="won">Won</option>
+      <option value="ignored">Ignored</option>
+    </select>
+    <input id="fSearch" type="search" placeholder="Search title or text…">
+    <button id="btnCsv" title="Download the leads you see now">Export CSV</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <div id="list"></div>
+
+  <footer>
+    Tip: reply helpfully first and mention CleanSlate only if it fits.
+    Your status buttons are saved in this browser only.
+  </footer>
+</div>
+
+<script>
+const STATUSES = ["replied", "interested", "won", "ignored"];
+let DATA = { leads: [], updated: null };
+
+function loadStatus() {
+  try { return JSON.parse(localStorage.getItem("cs_status") || "{}"); } catch (e) { return {}; }
+}
+function saveStatus(o) {
+  try { localStorage.setItem("cs_status", JSON.stringify(o)); } catch (e) {}
+}
+let status = loadStatus();
+
+const $ = (id) => document.getElementById(id);
+const safeUrl = (u) => /^https?:\/\//i.test(u) ? u : "#";
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;   // textContent = safe against HTML in posts
+  return n;
+}
+
+function fillSelect(sel, values) {
+  const keep = sel.value;
+  [...new Set(values)].filter(Boolean).sort().forEach((v) => {
+    const o = el("option", "", v); o.value = v; sel.appendChild(o);
+  });
+  sel.value = keep;
+}
+
+function filtered() {
+  const min = +$("fScore").value, intent = $("fIntent").value, src = $("fSource").value;
+  const st = $("fStatus").value, q = $("fSearch").value.trim().toLowerCase();
+  return DATA.leads.filter((l) => {
+    const s = status[l.url] || "new";
+    if (l.score < min) return false;
+    if (intent && l.intent !== intent) return false;
+    if (src && l.source !== src) return false;
+    if (st === "open" && s === "ignored") return false;
+    if (st && st !== "open" && s !== st) return false;
+    if (q && !(l.title + " " + l.snippet).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function render() {
+  const rows = filtered();
+  const list = $("list");
+  list.textContent = "";
+  const counts = { interested: 0, won: 0, replied: 0 };
+  DATA.leads.forEach((l) => { const s = status[l.url]; if (counts[s] !== undefined) counts[s]++; });
+  $("stats").textContent =
+    `${rows.length} shown of ${DATA.leads.length} · replied ${counts.replied} · interested ${counts.interested} · won ${counts.won}`;
+
+  if (!rows.length) {
+    list.appendChild(el("div", "empty",
+      DATA.leads.length ? "No leads match these filters." :
+      "No leads yet. Run the “Find leads” workflow in GitHub Actions, then refresh."));
+    return;
+  }
+
+  const twoDays = Date.now() / 1000 - 2 * 86400;
+  rows.forEach((l) => {
+    const s = status[l.url] || "new";
+    const card = el("div", "card" + (l.score >= 8 ? " hi" : l.score >= 5 ? " mid" : "") +
+                    (s === "ignored" || s === "won" ? " done" : ""));
+
+    const top = el("div", "top");
+    top.appendChild(el("span", "score", String(l.score)));
+    if (l.intent) top.appendChild(el("span", "tag", l.intent.replace("_", " ")));
+    if (l.first_seen > twoDays && s === "new") top.appendChild(el("span", "new", "NEW"));
+    top.appendChild(el("span", "meta", `${l.source} · ${l.author || "?"} · ${l.date}`));
+    card.appendChild(top);
+
+    const a = el("a", "title", l.title || "(no title)");
+    a.href = safeUrl(l.url); a.target = "_blank"; a.rel = "noopener noreferrer";
+    card.appendChild(a);
+
+    if (l.snippet) card.appendChild(el("p", "snip",
+      l.snippet.length >= 400 ? l.snippet + "…" : l.snippet));
+    card.appendChild(el("p", "why", "Why: " + l.reason));
+
+    const act = el("div", "actions");
+    STATUSES.forEach((name) => {
+      const b = el("button", s === name ? "on" : "", name);
+      b.onclick = () => {
+        if (status[l.url] === name) delete status[l.url]; else status[l.url] = name;
+        saveStatus(status); render();
+      };
+      act.appendChild(b);
+    });
+    card.appendChild(act);
+    list.appendChild(card);
+  });
+}
+
+function csvCell(v) { return '"' + String(v ?? "").replace(/"/g, '""') + '"'; }
+function exportCsv() {
+  const head = ["score", "intent", "status", "source", "title", "url", "author", "date", "reason"];
+  const lines = [head.join(",")];
+  filtered().forEach((l) => lines.push([l.score, l.intent, status[l.url] || "new", l.source,
+    l.title, l.url, l.author, l.date, l.reason].map(csvCell).join(",")));
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "cleanslate-leads.csv"; a.click();
+}
+
+async function init() {
+  try {
+    const r = await fetch("leads.json?t=" + Date.now());
+    DATA = await r.json();
+  } catch (e) {
+    $("updated").textContent = "Could not load leads.json";
+    return;
+  }
+  $("updated").textContent = DATA.updated ? "Last updated " + DATA.updated : "Not updated yet";
+  fillSelect($("fIntent"), DATA.leads.map((l) => l.intent));
+  fillSelect($("fSource"), DATA.leads.map((l) => l.source));
+  ["fScore", "fIntent", "fSource", "fStatus"].forEach((id) => $(id).addEventListener("change", render));
+  $("fSearch").addEventListener("input", render);
+  $("btnCsv").addEventListener("click", exportCsv);
+  render();
+}
+init();
+</script>
+</body>
+</html>
