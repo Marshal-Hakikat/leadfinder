@@ -31,7 +31,7 @@ import requests
 # --------------------------------------------------------------------------
 USER_AGENT = os.environ.get(
     "LEADFINDER_USER_AGENT",
-    "cleanslate-leadfinder/0.1 (contact: marshal.hakikat@gmail.com)",  # put your email here
+    "cleanslate-leadfinder/0.1 (contact: you@example.com)",  # put your email here
 )
 NOTIFY_MIN_SCORE = 7  # webhook alert only for new leads at or above this score
 
@@ -381,11 +381,14 @@ def ingest(con, posts):
     """Store new posts. Returns (count_new, list_of_new_strong_leads)."""
     new = 0
     strong = []
+    too_old = already = 0
     cutoff = time.time() - MAX_AGE_DAYS * 86400
     for p in posts:
         if p.get("created_at") and p["created_at"] < cutoff:
+            too_old += 1
             continue  # too old to be a useful lead
         if con.execute("SELECT 1 FROM posts WHERE url=?", (p["url"],)).fetchone():
+            already += 1
             continue
         score, intent, reason = rule_score(p["title"], p["body"], p["created_at"])
         by = "rules"
@@ -405,6 +408,8 @@ def ingest(con, posts):
             strong.append({"score": score, "intent": intent, "title": p["title"],
                            "url": p["url"], "source": p["source"]})
     con.commit()
+    print(f"  Of {len(posts)} posts found: {too_old} older than {MAX_AGE_DAYS} days (skipped), "
+          f"{already} already stored, {new} new.")
     return new, strong
 
 
@@ -582,7 +587,8 @@ def main():
                          ("Hacker News", fetch_hn)]:
             print(f"Fetching {name}...")
             got = fn()
-            print(f"  {len(got)} posts")
+            newest = max((g["created_at"] for g in got if g.get("created_at")), default=0)
+            print(f"  {len(got)} posts; newest post date: {fmt_date(newest)}")
             posts += got
         n, strong = ingest(con, posts)
         print(f"New posts stored: {n}")
