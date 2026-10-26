@@ -1,4 +1,4 @@
-# CleanSlate Leads
+# Leads
 
 A free tool that finds people asking about duplicate leads in Salesforce
 (Reddit, Salesforce Stack Exchange, Hacker News), scores them, and shows them
