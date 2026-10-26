@@ -31,7 +31,7 @@ import requests
 # --------------------------------------------------------------------------
 USER_AGENT = os.environ.get(
     "LEADFINDER_USER_AGENT",
-    "cleanslate-leadfinder/0.1 (contact: marshal.hakikat@gmail.com)",  # put your email here
+    "cleanslate-leadfinder/0.1 (contact: you@example.com)",  # put your email here
 )
 NOTIFY_MIN_SCORE = 7  # webhook alert only for new leads at or above this score
 
@@ -98,11 +98,21 @@ INTENT = [
     r"which (tool|app)",
     r"\?",
 ]
+# Competitor names, matched as whole words. Common English phrases
+# ("duplicate check", "validity") are NOT included on purpose.
 COMPETITORS = [
-    "cloudingo", "demandtools", "duplicate check", "plauti", "ringlead",
-    "dupeblocker", "dedupely", "insycle", "validity",
+    "cloudingo", "demandtools", "plauti", "ringlead", "dupeblocker",
+    "dedupely", "insycle", "datagroomr", "dedup manager", "leandata",
+    "duplicate check by plauti", "duplicate check app",
 ]
 NEGATIVE = [r"\bexam\b", r"certification", r"interview question", r"superbadge", r"trailhead"]
+# Developers fixing code / other products: usually not buyers
+DEVNOISE = [
+    r"\bapex\b", r"\btrigger", r"\bsoql\b", r"governor limit", r"cpu time", r"test class",
+    r"\blwc\b", r"visualforce", r"\bsfdx\b", r"batch class", r"DUPLICATES_DETECTED",
+    r"marketing cloud", r"subscriber", r"\bdata extension", r"ampscript",
+]
+MAX_AGE_DAYS = 90    # posts older than ~3 months are dropped
 ROLE = [r"(i'm|i am|we are|our|as) (a |an |the )?(sf |salesforce )?(admin|revops|rev ops|sales ops|operations)"]
 
 # Target customer: small companies and startups
@@ -136,7 +146,7 @@ def rule_score(title, body, created_at):
 
     pain_title = _hits(PAIN, title)
     pain_all = _hits(PAIN, text)
-    comp = [c for c in COMPETITORS if c in text.lower()]
+    comp = [c for c in COMPETITORS if re.search(r"\b" + re.escape(c) + r"\b", text, re.I)]
     intent = _hits(INTENT, text)
     neg = _hits(NEGATIVE, text)
 
@@ -176,11 +186,18 @@ def rule_score(title, body, created_at):
         score -= 2
         reasons.append("enterprise signal (not target)")
 
+    if _hits(DEVNOISE, text):
+        score -= 3
+        reasons.append("developer/code question (not a buyer)")
+
     if created_at:
         age_days = (time.time() - created_at) / 86400
-        if age_days > 180:
+        if age_days > 60:
+            score -= 4
+            reasons.append("old post (2+ months)")
+        elif age_days > 30:
             score -= 2
-            reasons.append("old post")
+            reasons.append("older post (1+ month)")
         elif age_days < 14:
             score += 1
             reasons.append("recent")
@@ -364,7 +381,10 @@ def ingest(con, posts):
     """Store new posts. Returns (count_new, list_of_new_strong_leads)."""
     new = 0
     strong = []
+    cutoff = time.time() - MAX_AGE_DAYS * 86400
     for p in posts:
+        if p.get("created_at") and p["created_at"] < cutoff:
+            continue  # too old to be a useful lead
         if con.execute("SELECT 1 FROM posts WHERE url=?", (p["url"],)).fetchone():
             continue
         score, intent, reason = rule_score(p["title"], p["body"], p["created_at"])
@@ -386,6 +406,22 @@ def ingest(con, posts):
                            "url": p["url"], "source": p["source"]})
     con.commit()
     return new, strong
+
+
+def rescore(con):
+    """Apply the current rules to posts already stored (keeps AI scores).
+    Also removes posts that are now too old. Returns (rescored, removed)."""
+    cutoff = int(time.time() - MAX_AGE_DAYS * 86400)
+    removed = con.execute(
+        "DELETE FROM posts WHERE created_at>0 AND created_at<?", (cutoff,)).rowcount
+    rows = con.execute(
+        "SELECT url,title,body,created_at FROM posts WHERE scored_by='rules'").fetchall()
+    for url, title, body, ts in rows:
+        score, intent, reason = rule_score(title, body, ts)
+        con.execute("UPDATE posts SET score=?,intent=?,reason=? WHERE url=?",
+                    (score, intent, reason, url))
+    con.commit()
+    return len(rows), removed
 
 
 def notify(strong):
@@ -538,6 +574,8 @@ def main():
 
     con = db_connect(args.db)
     os.makedirs(args.out, exist_ok=True)
+    n_re, n_del = rescore(con)
+    print(f"Re-scored {n_re} stored posts, removed {n_del} old ones.")
     if args.command == "run":
         posts = []
         for name, fn in [("Reddit", fetch_reddit), ("Salesforce Stack Exchange", fetch_stackexchange),
