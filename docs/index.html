@@ -49,10 +49,11 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>CleanSlate Leads</h1>
+  <h1 id="title">Leads</h1>
   <div class="sub" id="updated">Loading…</div>
 
   <div class="filters">
+    <select id="fProject" title="Product" hidden></select>
     <select id="fScore" title="Minimum score">
       <option value="3">Score 3+</option><option value="4">Score 4+</option>
       <option value="5" selected>Score 5+</option><option value="7">Score 7+</option>
@@ -141,7 +142,7 @@ function render() {
     return;
   }
 
-  const twoDays = Date.now() / 1000 - 2 * 86400;
+  const newSince = Date.now() / 1000 - 7 * 86400;   // posts from the last 7 days
   rows.forEach((l) => {
     const s = status[l.url] || "new";
     const card = el("div", "card" + (l.score >= 8 ? " hi" : l.score >= 5 ? " mid" : "") +
@@ -150,7 +151,7 @@ function render() {
     const top = el("div", "top");
     top.appendChild(el("span", "score", String(l.score)));
     if (l.intent) top.appendChild(el("span", "tag", l.intent.replace("_", " ")));
-    if (l.first_seen > twoDays && s === "new") top.appendChild(el("span", "new", "NEW"));
+    if (l.created_at > newSince && s === "new") top.appendChild(el("span", "new", "NEW"));
     top.appendChild(el("span", "meta", `${l.source} · ${l.author || "?"} · ${l.date}`));
     card.appendChild(top);
 
@@ -187,21 +188,59 @@ function exportCsv() {
   a.href = URL.createObjectURL(blob); a.download = "cleanslate-leads.csv"; a.click();
 }
 
-async function init() {
+function resetSelect(sel, label) {
+  sel.textContent = "";
+  const o = el("option", "", label); o.value = ""; sel.appendChild(o);
+}
+
+async function getJson(url) {
+  const r = await fetch(url + "?t=" + Date.now());
+  if (!r.ok) throw new Error(url + " " + r.status);
+  return r.json();
+}
+
+async function loadProject(slug) {
   try {
-    const r = await fetch("leads.json?t=" + Date.now());
-    DATA = await r.json();
+    DATA = await getJson(slug ? slug + "/leads.json" : "leads.json");
   } catch (e) {
-    $("updated").textContent = "Could not load leads.json";
+    DATA = { leads: [], updated: null };
+    $("updated").textContent = "Could not load the leads for this product.";
+    render();
     return;
   }
+  document.title = (DATA.name || "Leads") + " Leads";
+  $("title").textContent = (DATA.name ? DATA.name + " " : "") + "Leads";
   $("updated").textContent = DATA.updated ? "Last updated " + DATA.updated : "Not updated yet";
+  resetSelect($("fIntent"), "All types");
+  resetSelect($("fSource"), "All sources");
   fillSelect($("fIntent"), DATA.leads.map((l) => l.intent));
   fillSelect($("fSource"), DATA.leads.map((l) => l.source));
+  render();
+}
+
+async function init() {
   ["fScore", "fIntent", "fSource", "fStatus"].forEach((id) => $(id).addEventListener("change", render));
   $("fSearch").addEventListener("input", render);
   $("btnCsv").addEventListener("click", exportCsv);
-  render();
+
+  let wanted = new URLSearchParams(location.search).get("p") || "";
+  if (!/^[A-Za-z0-9_-]+$/.test(wanted)) wanted = "";
+  let projects = [];
+  try { projects = (await getJson("projects.json")).projects || []; } catch (e) {}
+
+  // Listed products show in a switcher. A product that is not listed opens only
+  // from its own link (?p=name) and shows no switcher, so customers see only theirs.
+  const slug = wanted || (projects[0] && projects[0].slug) || "";
+  if (projects.length > 1 && projects.some((p) => p.slug === slug)) {
+    const sel = $("fProject");
+    projects.forEach((p) => { const o = el("option", "", p.name); o.value = p.slug; sel.appendChild(o); });
+    sel.value = slug; sel.hidden = false;
+    sel.addEventListener("change", () => {
+      history.replaceState(null, "", "?p=" + encodeURIComponent(sel.value));
+      loadProject(sel.value);
+    });
+  }
+  await loadProject(slug);
 }
 init();
 </script>

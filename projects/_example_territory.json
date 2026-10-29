@@ -1,0 +1,28 @@
+{
+  "name": "Example: Lead routing tool",
+  "description": "An example second product: a Salesforce app for lead routing and territory assignment for small sales teams. Copy this file, rename it (no underscore at the start) and edit it for your own product.",
+
+  "keywords": [
+    "lead routing",
+    "territory assignment",
+    "round robin",
+    "lead assignment rules",
+    "territory management"
+  ],
+  "competitors": ["LeanData", "Chili Piper", "Distribution Engine"],
+
+  "examples": [
+    "We're a small sales team and round robin isn't enough. Is there an app for territory assignment by state and company size?"
+  ],
+
+  "exclude_patterns": ["\\bexam\\b", "certification", "interview question"],
+  "noise_patterns": ["\\bapex\\b", "\\bsoql\\b", "governor limit", "test class"],
+  "target_small_companies": true,
+
+  "sources": {
+    "reddit_subreddits": ["salesforce", "salesforceadmin"],
+    "reddit_general_subreddits": [],
+    "stackexchange_sites": ["salesforce"],
+    "hn_queries": ["salesforce lead routing", "salesforce territory assignment"]
+  }
+}

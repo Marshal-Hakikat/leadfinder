@@ -1,0 +1,61 @@
+{
+  "name": "CleanSlate",
+  "description": "CleanSlate is a Salesforce app for duplicate lead management: it finds and merges duplicate leads, contacts and accounts and prevents new duplicates. Target customers are small companies and startups (small teams, often one admin, price-sensitive). Large enterprises are NOT the target.",
+
+  "keywords": [
+    "duplicate leads",
+    "duplicate records",
+    "dedupe",
+    "merge duplicates",
+    "duplicate rules",
+    "duplicate management"
+  ],
+  "competitors": [
+    "Cloudingo", "DemandTools", "Plauti", "RingLead", "DupeBlocker",
+    "Dedupely", "Insycle", "DataGroomr", "Dedup Manager",
+    "Duplicate Check by Plauti", "Duplicate Check app"
+  ],
+
+  "examples": [
+    "Looking for a dedupe tool for duplicate leads - anything better than native duplicate rules? We're a small team and our web-to-lead form creates duplicates daily.",
+    "Cloudingo is too expensive for our startup, what are the alternatives for merging duplicate records in Salesforce?"
+  ],
+
+  "pain_patterns": [
+    "duplicate[sd]? (lead|leads|record|records|contact|contacts|account|accounts)",
+    "\\bdedup", "de-dup",
+    "merge (lead|leads|duplicate|duplicates|record|records|contact|contacts|account|accounts)",
+    "duplicate (rule|rules|management|matching|check)",
+    "matching rule",
+    "same (lead|person|contact) (twice|multiple)",
+    "duplicat\\w* (on|during|after) (conversion|convert|import|upload|web.?to.?lead)",
+    "duplicate",
+    "dirty data|data quality|data clean"
+  ],
+  "role_patterns": [
+    "(i'm|i am|we are|our|as) (a |an |the )?(sf |salesforce )?(admin|revops|rev ops|sales ops|operations)"
+  ],
+  "exclude_patterns": ["\\bexam\\b", "certification", "interview question", "superbadge", "trailhead"],
+  "noise_patterns": [
+    "\\bapex\\b", "\\btrigger", "\\bsoql\\b", "governor limit", "cpu time", "test class",
+    "\\blwc\\b", "visualforce", "\\bsfdx\\b", "batch class", "DUPLICATES_DETECTED",
+    "marketing cloud", "subscriber", "\\bdata extension", "ampscript"
+  ],
+  "small_company_patterns": [
+    "professional edition", "essentials", "starter suite", "free edition", "developer edition"
+  ],
+  "target_small_companies": true,
+
+  "sources": {
+    "reddit_subreddits": ["salesforce", "salesforceadmin"],
+    "reddit_general_subreddits": ["startups", "smallbusiness", "CRM", "sales", "SaaS"],
+    "general_queries": [
+      "salesforce duplicate leads", "salesforce duplicates",
+      "salesforce dedupe", "crm duplicate leads"
+    ],
+    "stackexchange_sites": ["salesforce"],
+    "hn_queries": [
+      "salesforce duplicate leads", "salesforce dedupe", "salesforce duplicate records"
+    ]
+  }
+}

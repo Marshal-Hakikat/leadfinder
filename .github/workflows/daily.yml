@@ -2,8 +2,8 @@ name: Find leads
 
 on:
   schedule:
-    - cron: "0 15 * * *"
-  workflow_dispatch:
+    - cron: "0 15 * * *"   # every day at 15:00 UTC (about 8 AM Pacific)
+  workflow_dispatch:        # lets you press "Run workflow" by hand
 
 permissions:
   contents: write
@@ -28,7 +28,9 @@ jobs:
 
       - name: Search, score and write the dashboard data
         env:
+          # Optional: add these in Settings > Secrets and variables > Actions
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          REDDITAPIS_KEY: ${{ secrets.REDDITAPIS_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python leadfinder.py run --db data/leads.db --out docs
 
