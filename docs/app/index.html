@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lead Finder</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1d2330;--muted:#667085;--line:#e2e5ea;--accent:#2457d6;--accent-t:#fff;--good:#16794a;--bad:#b42318;--warn:#b54708}
+@media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1b202a;--text:#e8ebf1;--muted:#98a2b3;--line:#2c3340;--accent:#6c93ff;--accent-t:#0b1020;--good:#4ade80;--bad:#f87171;--warn:#fbbf24}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{font-size:18px;margin:0 12px 0 0}
+nav a{color:var(--muted);text-decoration:none;padding:6px 10px;border-radius:6px}
+nav a.on{color:var(--text);background:var(--bg);font-weight:600}
+.sp{flex:1}
+main{max-width:900px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:0 0 12px}
+h2{font-size:20px;margin:8px 0 12px}h3{font-size:16px;margin:0 0 6px}
+label{display:block;font-weight:600;margin:12px 0 4px}
+.hint{color:var(--muted);font-size:13px;font-weight:400}
+input,textarea,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}
+textarea{min-height:90px;resize:vertical}
+button{font:inherit;padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-t);border-color:var(--accent);font-weight:600}
+button.on{border-color:var(--accent);background:var(--accent);color:var(--accent-t)}
+button.up.on{background:var(--good);border-color:var(--good)}button.down.on{background:var(--bad);border-color:var(--bad)}
+button.link{border:0;background:none;color:var(--accent);padding:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+.score{font-weight:700;border-radius:6px;padding:2px 8px;color:var(--accent-t);background:var(--muted)}
+.s-hi{background:var(--good)}.s-mid{background:var(--warn)}
+.lead a.t{font-weight:600;color:var(--text);text-decoration:none}.lead a.t:hover{text-decoration:underline}
+.meta{color:var(--muted);font-size:13px;margin:4px 0}
+.angle{border-left:3px solid var(--accent);padding:2px 10px;margin:8px 0;font-size:14px}
+.snip{color:var(--muted);font-size:14px;margin:6px 0}
+.err{color:var(--bad)}.ok{color:var(--good)}
+.count{font-size:13px;color:var(--muted)}.count.over{color:var(--bad);font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.auth{max-width:380px;margin:40px auto}
+.empty{color:var(--muted);text-align:center;padding:30px 10px}
+</style>
+</head>
+<body>
+<header id="top" hidden>
+  <h1 id="appname">Lead Finder</h1>
+  <nav id="nav"></nav>
+  <span class="sp"></span>
+  <span class="count" id="lastrun"></span>
+  <button id="signout">Sign out</button>
+</header>
+<main id="app"></main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.75.1/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(function () {
+"use strict";
+var CFG = window.LEADFINDER_CONFIG || {};
+var sb = window.__TEST_SB__ || window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+var $ = function (s, r) { return (r || document).querySelector(s); };
+var state = { user: null, projects: [], msg: "" };
+
+/* ---------- starter packs: everything is editable after choosing ---------- */
+var PACKS = {
+  blank: { label: "Start from blank", name: "", description: "", context: "", keywords: [], competitors: [], exclude: [], subreddits: [], se_sites: [], small: true },
+  "sf-duplicates": { label: "Salesforce: duplicate leads", name: "", context: "salesforce",
+    description: "Finds and merges duplicate leads, contacts and accounts in Salesforce and prevents new duplicates.",
+    keywords: ["duplicate leads", "duplicate records", "dedupe", "merge duplicates", "duplicate rules", "duplicate management"],
+    competitors: ["Cloudingo", "DemandTools", "Plauti", "RingLead", "Dedupely", "Insycle"],
+    exclude: ["exam", "certification", "trailhead", "apex", "soql"], subreddits: ["salesforce", "salesforceadmin"], se_sites: ["salesforce"], small: true },
+  "sf-routing": { label: "Salesforce: lead routing and territories", name: "", context: "salesforce",
+    description: "Assigns leads and accounts to the right sales rep automatically (round robin, territories, rules).",
+    keywords: ["lead routing", "lead assignment", "round robin", "territory management", "assignment rules", "territory assignment"],
+    competitors: ["LeanData", "Chili Piper", "Distribution Engine"],
+    exclude: ["exam", "certification", "trailhead", "apex"], subreddits: ["salesforce", "salesforceadmin"], se_sites: ["salesforce"], small: true },
+  "sf-cpq": { label: "Salesforce: CPQ and quoting", name: "", context: "salesforce",
+    description: "Helps teams build quotes, pricing and proposals in Salesforce faster.",
+    keywords: ["salesforce cpq", "quote template", "quoting process", "price book", "product bundles", "quote approval"],
+    competitors: ["DealHub", "Conga", "PandaDoc", "Nue"],
+    exclude: ["exam", "certification", "trailhead"], subreddits: ["salesforce", "salesforceadmin"], se_sites: ["salesforce"], small: true },
+  "sf-quality": { label: "Salesforce: data quality", name: "", context: "salesforce",
+    description: "Cleans and standardizes Salesforce data (bad emails, missing fields, messy imports).",
+    keywords: ["data quality", "dirty data", "data cleanup", "data enrichment", "bad data", "standardize data"],
+    competitors: ["ZoomInfo", "Clearbit", "DemandTools", "Openprise"],
+    exclude: ["exam", "certification", "trailhead", "apex"], subreddits: ["salesforce", "salesforceadmin"], se_sites: ["salesforce"], small: true },
+  restaurant: { label: "Restaurants: tips, scheduling, payroll", name: "", context: "restaurant",
+    description: "Software for restaurants, for example tip pooling and tip distribution, scheduling or payroll for servers and kitchen staff.",
+    keywords: ["tip pooling", "tip distribution", "tip out", "tip sharing", "split tips", "tip tracking", "restaurant payroll tips"],
+    competitors: ["7shifts", "Homebase", "Toast", "Tipalti"],
+    exclude: ["homework", "recipe", "reservation"], subreddits: ["restaurateur", "restaurantowners", "KitchenConfidential", "Serverlife"], se_sites: [], small: true }
+};
+
+/* ---------- small helpers (all text is written with textContent) ---------- */
+function el(tag, attrs, kids) {
+  var e = document.createElement(tag);
+  Object.keys(attrs || {}).forEach(function (k) {
+    if (k === "class") e.className = attrs[k];
+    else if (k === "text") e.textContent = attrs[k];
+    else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+    else if (attrs[k] !== false && attrs[k] != null) e.setAttribute(k, attrs[k] === true ? "" : attrs[k]);
+  });
+  (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+  return e;
+}
+function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+function lines(text) { return text.split(/[\n,]/).map(function (s) { return s.trim(); }).filter(Boolean); }
+function safeUrl(u) { return /^https?:\/\//i.test(u || "") ? u : "#"; }
+function ago(iso) {
+  if (!iso) return "";
+  var d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  return d <= 0 ? "today" : d === 1 ? "1 day ago" : d + " days ago";
+}
+function say(msg, bad) { state.msg = { t: msg, bad: !!bad }; }
+function msgNode() {
+  if (!state.msg) return null;
+  var n = el("p", { class: state.msg.bad ? "err" : "ok", role: "status", text: state.msg.t });
+  state.msg = "";
+  return n;
+}
+function nice(err) { return (err && err.message) ? err.message : "Something went wrong. Please try again."; }
+
+/* ---------- routing ---------- */
+function route() { return (location.hash || "#/leads").slice(2).split("/"); }
+function go(h) { if (location.hash === h) render(); else location.hash = h; }
+window.addEventListener("hashchange", render);
+
+function drawNav(r) {
+  var nav = $("#nav"); clear(nav);
+  [["leads", "Leads"], ["products", "My products"], ["working", "What's working"]].forEach(function (x) {
+    nav.appendChild(el("a", { href: "#/" + x[0], class: r[0] === x[0] ? "on" : "", text: x[1] }));
+  });
+}
+
+async function loadProjects() {
+  var res = await sb.from("projects").select("*").order("created_at", { ascending: true });
+  if (res.error) throw res.error;
+  state.projects = res.data || [];
+}
+
+async function render() {
+  var app = $("#app");
+  if (!state.user) { $("#top").hidden = true; return drawAuth(app); }
+  $("#top").hidden = false;
+  $("#appname").textContent = CFG.APP_NAME || "Lead Finder";
+  var r = route();
+  drawNav(r);
+  clear(app);
+  try {
+    await loadProjects();
+    var lr = await sb.from("app_status").select("last_run").maybeSingle();
+    $("#lastrun").textContent = lr && lr.data && lr.data.last_run ? "Last search: " + ago(lr.data.last_run) : "No search has run yet";
+    if (r[0] === "products") return r[1] === "new" ? drawForm(app, null) : r[1] === "edit" ? drawForm(app, state.projects.filter(function (p) { return p.id === r[2]; })[0]) : drawProducts(app);
+    if (r[0] === "working") return drawWorking(app);
+    return drawLeads(app, r[1]);
+  } catch (e) { app.appendChild(el("p", { class: "err", text: nice(e) })); }
+}
+
+/* ---------- sign in / sign up ---------- */
+function drawAuth(app) {
+  clear(app);
+  var mode = "in";
+  var box = el("div", { class: "card auth" });
+  function draw() {
+    clear(box);
+    box.appendChild(el("h2", { text: mode === "in" ? "Sign in" : mode === "up" ? "Create your account" : "Reset password" }));
+    var m = msgNode(); if (m) box.appendChild(m);
+    var email = el("input", { type: "email", id: "email", autocomplete: "email", required: true });
+    var pw = el("input", { type: "password", id: "pw", autocomplete: mode === "up" ? "new-password" : "current-password", minlength: "8" });
+    box.appendChild(el("label", { for: "email", text: "Email" })); box.appendChild(email);
+    if (mode !== "reset") { box.appendChild(el("label", { for: "pw", text: "Password" })); box.appendChild(pw); }
+    var go1 = el("button", { class: "primary", id: "authgo", text: mode === "in" ? "Sign in" : mode === "up" ? "Sign up" : "Send reset email", onclick: async function () {
+      var e = email.value.trim(), p = pw.value;
+      if (!e) { say("Please type your email.", true); return draw(); }
+      if (mode !== "reset" && p.length < 8) { say("Password must have at least 8 characters.", true); return draw(); }
+      var res;
+      if (mode === "in") res = await sb.auth.signInWithPassword({ email: e, password: p });
+      else if (mode === "up") res = await sb.auth.signUp({ email: e, password: p, options: { emailRedirectTo: location.href.split("#")[0] } });
+      else res = await sb.auth.resetPasswordForEmail(e, { redirectTo: location.href.split("#")[0] });
+      if (res.error) { say(nice(res.error), true); return draw(); }
+      if (mode === "up" && !res.data.session) { say("Almost done. Check your email and click the confirmation link."); mode = "in"; return draw(); }
+      if (mode === "reset") { say("If this email has an account, a reset link is on its way."); mode = "in"; return draw(); }
+    } });
+    box.appendChild(el("p", {}, [go1]));
+    var links = el("p", { class: "row" });
+    if (mode !== "in") links.appendChild(el("button", { class: "link", text: "I have an account", onclick: function () { mode = "in"; draw(); } }));
+    if (mode !== "up") links.appendChild(el("button", { class: "link", text: "Create an account", onclick: function () { mode = "up"; draw(); } }));
+    if (mode === "in") links.appendChild(el("button", { class: "link", text: "Forgot password", onclick: function () { mode = "reset"; draw(); } }));
+    box.appendChild(links);
+    box.appendChild(el("p", { class: "hint", text: "We only use public posts. We never post for you." }));
+  }
+  draw();
+  app.appendChild(box);
+}
+
+/* ---------- products ---------- */
+function drawProducts(app) {
+  app.appendChild(el("h2", { text: "My products" }));
+  var m = msgNode(); if (m) app.appendChild(m);
+  if (!state.projects.length) {
+    app.appendChild(el("div", { class: "card empty" }, [el("p", { text: "You have no product yet. Add one and the daily search will start tomorrow morning." })]));
+  }
+  state.projects.forEach(function (p) {
+    var c = el("div", { class: "card" });
+    c.appendChild(el("h3", { text: p.name }));
+    c.appendChild(el("p", { class: "meta", text: p.keywords.length + " keywords: " + p.keywords.join(", ") }));
+    if (p.subreddits.length) c.appendChild(el("p", { class: "meta", text: "Communities: " + p.subreddits.map(function (s) { return "r/" + s; }).join(", ") }));
+    c.appendChild(el("div", { class: "row" }, [
+      el("button", { text: "See leads", onclick: function () { go("#/leads/" + p.id); } }),
+      el("button", { text: "Edit", onclick: function () { go("#/products/edit/" + p.id); } }),
+      el("button", { text: "Delete", onclick: async function () {
+        if (!confirm("Delete " + p.name + " and its leads?")) return;
+        var res = await sb.from("projects").delete().eq("id", p.id);
+        say(res.error ? nice(res.error) : "Deleted.", !!res.error); render();
+      } })
+    ]));
+    app.appendChild(c);
+  });
+  if (state.projects.length < 3) app.appendChild(el("button", { class: "primary", id: "addprod", text: "Add a product", onclick: function () { go("#/products/new"); } }));
+  else app.appendChild(el("p", { class: "hint", text: "The free plan allows up to 3 products." }));
+}
+
+function drawForm(app, p) {
+  var isNew = !p;
+  p = p || { name: "", description: "", context: "", keywords: [], competitors: [], exclude_words: [], examples: [], subreddits: [], se_sites: [], small_companies: true, pack: null };
+  app.appendChild(el("h2", { text: isNew ? "Add a product" : "Edit " + p.name }));
+  var m = msgNode(); if (m) app.appendChild(m);
+  var f = el("div", { class: "card" });
+  var packSel = el("select", { id: "pack" }, Object.keys(PACKS).map(function (k) { return el("option", { value: k, text: PACKS[k].label }); }));
+  if (isNew) { f.appendChild(el("label", { for: "pack", text: "Start with a ready-made set (you can change everything)" })); f.appendChild(packSel); }
+  var name = el("input", { id: "name", maxlength: "80", value: p.name });
+  var desc = el("textarea", { id: "desc", maxlength: "600" }); desc.value = p.description;
+  var ctx = el("input", { id: "ctx", maxlength: "60", value: p.context });
+  var kw = el("textarea", { id: "kw" }); kw.value = p.keywords.join("\n");
+  var kwCount = el("span", { class: "count", id: "kwcount" });
+  var comp = el("textarea", { id: "comp" }); comp.value = p.competitors.join("\n");
+  var exc = el("textarea", { id: "exc" }); exc.value = p.exclude_words.join("\n");
+  var ex = el("textarea", { id: "ex" }); ex.value = p.examples.join("\n---\n");
+  var subs = el("textarea", { id: "subs" }); subs.value = p.subreddits.join("\n");
+  var ses = el("input", { id: "ses", value: p.se_sites.join(", ") });
+  var small = el("input", { type: "checkbox", id: "small", style: "width:auto" }); small.checked = p.small_companies;
+  function count() { var n = lines(kw.value).length; kwCount.textContent = n + " of 15"; kwCount.className = "count" + (n > 15 ? " over" : ""); }
+  kw.addEventListener("input", count);
+  function add(label, hint, node, extra) {
+    f.appendChild(el("label", { text: label }, [hint ? el("span", { class: "hint", text: " " + hint }) : null]));
+    f.appendChild(node); if (extra) f.appendChild(extra);
+  }
+  add("Product name", "", name);
+  add("What problem does it solve?", "in plain words, who it is for", desc);
+  add("Keywords", "one per line, up to 15: words people use when they have the problem", kw, kwCount);
+  add("Context word", "optional, for example: salesforce or restaurant", ctx);
+  add("Competitors", "optional, up to 10: a post that mentions one scores high", comp);
+  add("Words to avoid", "optional, up to 10: posts with these score lower", exc);
+  add("Example posts", "optional, up to 3, separate with a line of ---: posts you wish you had found", ex);
+  add("Reddit communities", "up to 8, one per line, for example: restaurateur", subs);
+  add("Stack Exchange sites", "up to 4, separated by commas, for example: salesforce", ses);
+  f.appendChild(el("label", {}, [small, " Favour small companies and startups"]));
+  packSel.addEventListener("change", function () {
+    var k = packSel.value, x = PACKS[k];
+    if (!name.value) name.value = x.name; desc.value = x.description; ctx.value = x.context;
+    kw.value = x.keywords.join("\n"); comp.value = x.competitors.join("\n"); exc.value = x.exclude.join("\n");
+    subs.value = x.subreddits.join("\n"); ses.value = x.se_sites.join(", "); small.checked = x.small; count();
+  });
+  f.appendChild(el("p", { class: "row" }, [
+    el("button", { class: "primary", id: "save", text: "Save", onclick: async function () {
+      var k = lines(kw.value);
+      if (!name.value.trim()) { say("Please type a product name.", true); return render(); }
+      if (k.length < 1 || k.length > 15) { say("Use between 1 and 15 keywords (you have " + k.length + ").", true); return render(); }
+      var row = {
+        name: name.value.trim(), description: desc.value.trim(), context: ctx.value.trim(), keywords: k,
+        competitors: lines(comp.value), exclude_words: lines(exc.value),
+        examples: ex.value.split(/^\s*---\s*$/m).map(function (s) { return s.trim(); }).filter(Boolean),
+        subreddits: lines(subs.value), se_sites: lines(ses.value), small_companies: small.checked,
+        pack: isNew ? packSel.value : p.pack
+      };
+      var res = isNew ? await sb.from("projects").insert(row) : await sb.from("projects").update(row).eq("id", p.id);
+      if (res.error) { state.draft = null; say(nice(res.error), true); return render(); }
+      say("Saved. The daily search will use these words from the next run."); go("#/products");
+    } }),
+    el("button", { text: "Cancel", onclick: function () { go("#/products"); } })
+  ]));
+  app.appendChild(f); count();
+}
+
+/* ---------- leads ---------- */
+var STATUSES = ["replied", "interested", "won", "ignored"];
+async function drawLeads(app, pid) {
+  app.appendChild(el("h2", { text: "Leads" }));
+  if (!state.projects.length) {
+    app.appendChild(el("div", { class: "card empty" }, [el("p", { text: "Add your first product to start getting leads." }),
+      el("button", { class: "primary", text: "Add a product", onclick: function () { go("#/products/new"); } })]));
+    return;
+  }
+  var cur = state.projects.filter(function (p) { return p.id === pid; })[0] || state.projects[0];
+  var bar = el("div", { class: "card row" });
+  var ps = el("select", { id: "fproj" }, state.projects.map(function (p) { return el("option", { value: p.id, text: p.name }); }));
+  ps.value = cur.id;
+  var min = el("select", { id: "fmin" }, [["4", "Score 4 and up"], ["7", "Score 7 and up (best)"], ["1", "All matches"]].map(function (x) { return el("option", { value: x[0], text: x[1] }); }));
+  var typ = el("select", { id: "ftype" }, [["", "All types"], ["tool_request", "Asking for a tool"], ["competitor", "Mentions a competitor"], ["pain", "Has the problem"], ["discussion", "Discussion"]].map(function (x) { return el("option", { value: x[0], text: x[1] }); }));
+  var hide = el("input", { type: "checkbox", id: "fhide", style: "width:auto" }); hide.checked = true;
+  var csv = el("button", { id: "csv", text: "Export CSV" });
+  bar.appendChild(ps); bar.appendChild(min); bar.appendChild(typ);
+  bar.appendChild(el("label", { style: "margin:0;font-weight:400" }, [hide, " hide ignored"])); bar.appendChild(csv);
+  app.appendChild(bar);
+  var list = el("div", { id: "list" }); app.appendChild(list);
+  var rows = [];
+  function paint() {
+    clear(list);
+    var shown = rows.filter(function (r) { return (!typ.value || r.intent === typ.value) && !(hide.checked && r.status === "ignored"); });
+    if (!shown.length) {
+      list.appendChild(el("div", { class: "card empty" }, [el("p", { text: rows.length ? "No leads match these filters." : "No leads yet. The search runs once a day. New posts appear here after the next run." })]));
+      return;
+    }
+    shown.forEach(function (r) { list.appendChild(leadCard(r, cur, paint)); });
+  }
+  async function load() {
+    var res = await sb.from("my_leads").select("*").eq("project_id", cur.id).gte("score", Number(min.value)).order("score", { ascending: false }).limit(500);
+    if (res.error) { list.appendChild(el("p", { class: "err", text: nice(res.error) })); return; }
+    rows = (res.data || []).slice().sort(function (a, b) { return b.score - a.score || new Date(b.posted_at) - new Date(a.posted_at); });
+    paint();
+  }
+  ps.addEventListener("change", function () { go("#/leads/" + ps.value); });
+  min.addEventListener("change", load); typ.addEventListener("change", paint); hide.addEventListener("change", paint);
+  csv.addEventListener("click", function () { downloadCsv(rows, cur.name); });
+  load();
+}
+
+async function saveStatus(r, cur, patch) {
+  var row = Object.assign({ project_id: cur.id, url: r.url, source: r.source, title: (r.title || "").slice(0, 300), intent: r.intent, score: r.score }, patch);
+  var res = await sb.from("lead_status").upsert(row, { onConflict: "project_id,url" });
+  if (res.error) alert(nice(res.error)); else Object.assign(r, patch);
+}
+
+function leadCard(r, cur, repaint) {
+  var c = el("div", { class: "card lead" });
+  var cls = r.score >= 7 ? "score s-hi" : r.score >= 4 ? "score s-mid" : "score";
+  c.appendChild(el("div", { class: "row" }, [el("span", { class: cls, text: String(r.score) }),
+    el("a", { class: "t", href: safeUrl(r.url), target: "_blank", rel: "noopener noreferrer", text: r.title || "(no title)" })]));
+  c.appendChild(el("div", { class: "meta" }, [el("span", { class: "pill", text: (r.intent || "").replace("_", " ") }), " " + (r.source || "") + " · " + ago(r.posted_at)]));
+  if (r.reason) c.appendChild(el("div", { class: "meta", text: "Why: " + r.reason }));
+  if (r.angle) c.appendChild(el("div", { class: "angle", text: "Reply idea: " + r.angle }));
+  if (r.snippet) c.appendChild(el("div", { class: "snip", text: r.snippet }));
+  var row = el("div", { class: "row" });
+  STATUSES.forEach(function (s) {
+    row.appendChild(el("button", { class: r.status === s ? "on" : "", "data-s": s, text: s, onclick: async function () { await saveStatus(r, cur, { status: r.status === s ? null : s }); repaint(); } }));
+  });
+  row.appendChild(el("span", { class: "sp" }));
+  row.appendChild(el("button", { class: "up" + (r.feedback === "good" ? " on" : ""), title: "Good lead", "aria-label": "Good lead", text: "👍", onclick: async function () { await saveStatus(r, cur, { feedback: r.feedback === "good" ? null : "good" }); repaint(); } }));
+  row.appendChild(el("button", { class: "down" + (r.feedback === "bad" ? " on" : ""), title: "Bad lead", "aria-label": "Bad lead", text: "👎", onclick: async function () { await saveStatus(r, cur, { feedback: r.feedback === "bad" ? null : "bad" }); repaint(); } }));
+  c.appendChild(row);
+  return c;
+}
+
+function downloadCsv(rows, name) {
+  function q(v) { v = String(v == null ? "" : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
+  var out = ["score,type,status,source,posted,title,url,why,reply idea"];
+  rows.forEach(function (r) { out.push([r.score, r.intent, r.status, r.source, r.posted_at, r.title, r.url, r.reason, r.angle].map(q).join(",")); });
+  var a = el("a", { href: URL.createObjectURL(new Blob([out.join("\n")], { type: "text/csv" })), download: name.replace(/\W+/g, "_") + "_leads.csv" });
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ---------- what's working ---------- */
+async function drawWorking(app) {
+  app.appendChild(el("h2", { text: "What's working" }));
+  var res = await sb.from("lead_status").select("*").limit(2000);
+  if (res.error) return app.appendChild(el("p", { class: "err", text: nice(res.error) }));
+  var rows = res.data || [];
+  if (!rows.length) return app.appendChild(el("div", { class: "card empty" }, [el("p", { text: "Nothing here yet. On the Leads page, mark leads as replied, interested or won, and use the thumbs. This page then shows which communities and lead types turn into customers." })]));
+  var names = {}; state.projects.forEach(function (p) { names[p.id] = p.name; });
+  function by(key) {
+    var m = {};
+    rows.forEach(function (r) {
+      var k = r[key] || "unknown"; m[k] = m[k] || { replied: 0, interested: 0, won: 0, good: 0, bad: 0 };
+      if (r.status && m[k][r.status] !== undefined) m[k][r.status]++;
+      if (r.feedback === "good") m[k].good++; if (r.feedback === "bad") m[k].bad++;
+    });
+    return m;
+  }
+  function table(title, key) {
+    var m = by(key), c = el("div", { class: "card" }, [el("h3", { text: title })]);
+    var t = el("table"); t.appendChild(el("tr", {}, ["", "Replied", "Interested", "Won", "Good", "Bad"].map(function (h) { return el("th", { text: h }); })));
+    Object.keys(m).sort(function (a, b) { return (m[b].won * 3 + m[b].interested * 2 + m[b].replied) - (m[a].won * 3 + m[a].interested * 2 + m[a].replied); }).forEach(function (k) {
+      var v = m[k]; t.appendChild(el("tr", {}, [(key === "project_id" ? names[k] || k : k), v.replied, v.interested, v.won, v.good, v.bad].map(function (x) { return el("td", { text: String(x) }); })));
+    });
+    c.appendChild(t); app.appendChild(c);
+  }
+  table("By community", "source"); table("By lead type", "intent");
+  if (state.projects.length > 1) table("By product", "project_id");
+  app.appendChild(el("p", { class: "hint", text: "Your thumbs up/down are saved with every lead. When the AI key is on, liked leads help it write better reply ideas." }));
+}
+
+/* ---------- start ---------- */
+$("#signout").addEventListener("click", async function () { await sb.auth.signOut(); });
+sb.auth.onAuthStateChange(function (_e, session) {
+  var u = session && session.user ? session.user : null;
+  if ((u && u.id) === (state.user && state.user.id)) return;
+  state.user = u; render();
+});
+sb.auth.getSession().then(function (r) {
+  var s = r && r.data && r.data.session;
+  if (!state.user && s) { state.user = s.user; }
+  render();
+});
+})();
+</script>
+</body>
+</html>
