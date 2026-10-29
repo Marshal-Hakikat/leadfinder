@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#F6F8FA;--card:#fff;--text:#14202B;--muted:#5B6B78;--line:#DCE3E8;--accent:#0F766E;--accent-t:#fff;--hl:#FFE066;--hl-t:#14202B;--good:#15803d;--bad:#b42318;--warn:#b45309;--soft:#EAF1F3;--shadow:0 1px 2px rgba(20,32,43,.06),0 8px 24px rgba(20,32,43,.06)}
-@media (prefers-color-scheme:dark){:root{--bg:#0E1419;--card:#16202A;--text:#E9EEF2;--muted:#93A4B2;--line:#25323E;--accent:#34D1C0;--accent-t:#06201D;--hl:#FFE066;--hl-t:#14202B;--good:#4ade80;--bad:#f87171;--warn:#fbbf24;--soft:#1B2833;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25)}}
+:root{--bg:#F6F8FA;--card:#fff;--text:#14202B;--muted:#5B6B78;--line:#DCE3E8;--accent:#5B3DF5;--accent-t:#fff;--p1:#E6E1FF;--p2:#D5F5E6;--p3:#FFF0B3;--p4:#FFDCEB;--p5:#D6ECFF;--hl:#FFE066;--hl-t:#14202B;--good:#15803d;--bad:#b42318;--warn:#b45309;--soft:#EAF1F3;--shadow:0 1px 2px rgba(20,32,43,.06),0 8px 24px rgba(20,32,43,.06)}
+@media (prefers-color-scheme:dark){:root{--bg:#0E1419;--card:#16202A;--text:#E9EEF2;--muted:#93A4B2;--line:#25323E;--accent:#A99BFF;--accent-t:#140C3A;--p1:#2A2552;--p2:#17382E;--p3:#41381A;--p4:#4A2338;--p5:#1B3350;--hl:#FFE066;--hl-t:#14202B;--good:#4ade80;--bad:#f87171;--warn:#fbbf24;--soft:#1B2833;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25)}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{scroll-behavior:smooth}
@@ -64,7 +64,8 @@ table{width:100%;border-collapse:collapse;font-size:15px}th,td{text-align:left;p
 .hero h1{font-size:clamp(36px,5.2vw,58px);line-height:1.04;letter-spacing:-.035em;margin:0 0 18px;font-weight:800}
 .hero p.lead{font-size:19px;color:var(--muted);max-width:34em;margin:0 0 26px}
 .hero .fine{font-size:14px;color:var(--muted);margin-top:12px}
-.sample{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:var(--shadow)}
+.stage{background:var(--p1);border-radius:28px;padding:34px 28px}
+.sample{background:var(--card);border:0;border-radius:16px;padding:18px 20px;box-shadow:var(--shadow)}
 .sample .tag{font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;gap:8px}
 .sample h3{font-size:19px;line-height:1.3;margin:6px 0 8px}
 .sample p{margin:0 0 12px;color:var(--muted);font-size:15px}
@@ -72,18 +73,25 @@ table{width:100%;border-collapse:collapse;font-size:15px}th,td{text-align:left;p
 .sec h2{font-size:clamp(24px,3vw,32px);letter-spacing:-.03em;max-width:20em;margin:0 0 10px}
 .sec p.sub{color:var(--muted);font-size:17px;max-width:38em;margin:0 0 14px}
 .steps{list-style:none;margin:18px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
-.steps li{display:block;padding:0}
-.steps .n{margin-bottom:8px}
+.steps li{display:block;padding:22px 22px 24px;border-radius:20px}
+.steps li:nth-child(1){background:var(--p3)}.steps li:nth-child(2){background:var(--p2)}.steps li:nth-child(3){background:var(--p4)}
+.steps .n{margin-bottom:8px;color:var(--accent)}
+.sec .steps li p{color:var(--text);opacity:.85}
 .steps .n{font-size:34px;font-weight:800;color:var(--accent);line-height:1;letter-spacing:-.04em}
 .steps h3{font-size:20px;margin:0 0 4px}.steps p{margin:0;color:var(--muted);max-width:40em}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+.panel{border-radius:22px;padding:28px}
+.panel.sky{background:var(--p5)}.panel.mint{background:var(--p2)}
+.sec .panel p.sub{color:var(--text);opacity:.85}
 .chips{display:flex;flex-wrap:wrap;gap:10px;margin:0;padding:0;list-style:none}
-.chips li{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:8px 16px;font-weight:600}
+.chips li{border-radius:99px;padding:8px 16px;font-weight:600;background:var(--card);color:var(--text)}
+.chips li:nth-child(5n+1){background:var(--p1)}.chips li:nth-child(5n+2){background:var(--p4)}.chips li:nth-child(5n+3){background:var(--p3)}.chips li:nth-child(5n+4){background:var(--p5)}.chips li:nth-child(5n+5){background:var(--card)}
 .where{margin:0;padding:0;list-style:none;display:grid;gap:10px;font-size:18px}
 .where span{color:var(--muted);font-size:15px;margin-left:6px}
 .cta{background:var(--accent);color:var(--accent-t);border-radius:20px;padding:30px 36px;margin:10px 0 32px;display:flex;gap:20px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .cta h2{margin:0 0 6px;font-size:clamp(24px,3vw,32px);letter-spacing:-.03em}.cta p{margin:0;opacity:.9;max-width:34em}
 .cta button{background:var(--hl);color:var(--hl-t);border-color:var(--hl)}
+.sec.two{border-top:0;padding-top:20px}
 footer.f{border-top:1px solid var(--line);padding:18px 0 28px;color:var(--muted);font-size:14px}
 @media (max-width:820px){.hero,.two{grid-template-columns:1fr;gap:28px}.hero{padding-top:20px}.sample{}.steps{grid-template-columns:1fr;gap:20px}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
@@ -235,14 +243,14 @@ function drawLanding(app) {
       el("div", { class: "row" }, [el("button", { class: "primary big", id: "startfree", text: "Get started", onclick: toSignup })]),
       el("p", { class: "fine", text: "Free while we test. No card needed." })
     ]),
-    el("div", { class: "sample", "aria-label": "Sample post" }, [
+    el("div", { class: "stage" }, [el("div", { class: "sample", "aria-label": "Sample post" }, [
       el("div", { class: "tag" }, [el("span", { text: "Sample post" }), el("span", { class: "score s-hi", text: "9" })]),
       el("div", { class: "meta", text: "r/salesforce, 2 days ago" }),
       (function () { var h = el("h3"); h.appendChild(mk("Anyone found a dedupe tool that isn't expensive for a small team?", ["dedupe tool"])); return h; })(),
       (function () { var p = el("p"); p.appendChild(mk("Our web-to-lead form keeps creating duplicate leads and native rules miss half of them.", ["duplicate leads"])); return p; })(),
       el("div", { class: "meta" }, [el("span", { class: "pill", text: "Wants a tool" }), " Why: asks for a tool, small team, price-sensitive"]),
       el("div", { class: "angle", text: "Reply idea: Explain how to catch web-to-lead duplicates with matching rules first. Mention a tool only if they ask." })
-    ])
+    ])])
   ]);
   var how = el("section", { class: "sec" }, [
     el("h2", { text: "Set it up once. It checks every day." }),
@@ -252,12 +260,12 @@ function drawLanding(app) {
       ["3", "You answer, as yourself", "Every lead shows why it was picked and a way to help. You write and send the reply yourself."]
     ].map(function (x) { return el("li", {}, [el("div", { class: "n", text: x[0] }), el("div", {}, [el("h3", { text: x[1] }), el("p", { text: x[2] })])]); }))
   ]);
-  var pays = el("div", {}, [
+  var pays = el("div", { class: "panel sky" }, [
     el("h2", { text: "See what pays off" }),
     el("p", { class: "sub", text: "Give each lead a thumbs up or down and mark it replied, interested or won. A page then shows which lead types turn into customers." }),
     el("p", { class: "sub", text: "We only use public posts. We never post, vote or message for you." })
   ]);
-  var sets = el("div", {}, [
+  var sets = el("div", { class: "panel mint" }, [
     el("h2", { text: "Begin with a ready set, or write your own" }),
     el("p", { class: "sub", text: "Every set fills in your words and rival products. You can change all of it." }),
     el("ul", { class: "chips" }, ["Salesforce: duplicate leads", "Salesforce: lead routing", "Salesforce: CPQ and quoting", "Salesforce: data quality", "Restaurants: tips, scheduling, payroll", "Your own product"].map(function (x) { return el("li", { text: x }); }))
