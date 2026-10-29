@@ -228,7 +228,7 @@ function drawLanding(app) {
   var hero = el("section", { class: "hero" }, [
     el("div", {}, [
       el("h1", { text: "Find the people who are asking for what you built." }),
-      el("p", { class: "lead", text: "Type the words your future customers use when they complain. Each morning we read public forums and list the posts that sound like them, with a reply idea for each." }),
+      el("p", { class: "lead", text: "Type the words your future customers use when they complain. Each morning we search public posts and list the ones that sound like them, with a reply idea for each." }),
       el("div", { class: "row" }, [el("button", { class: "primary big", id: "startfree", text: "Get started", onclick: toSignup })]),
       el("p", { class: "fine", text: "Free while we test. No card needed." })
     ]),
@@ -245,18 +245,18 @@ function drawLanding(app) {
     el("h2", { text: "Set it up once. It checks every day." }),
     el("ol", { class: "steps" }, [
       ["1", "Pick your words", "Choose a ready-made set or type up to 15 words and phrases your future customers would use."],
-      ["2", "We read the forums", "Each morning we check the communities you chose and rate every new post against your words."],
+      ["2", "We search for you", "Each morning we look through public posts and rate every new one against your words."],
       ["3", "You answer, as yourself", "Every lead shows why it was picked and a way to help. You write and send the reply yourself."]
     ].map(function (x) { return el("li", {}, [el("div", { class: "n", text: x[0] }), el("div", {}, [el("h3", { text: x[1] }), el("p", { text: x[2] })])]); }))
   ]);
-  var where = el("section", { class: "sec two" }, [
-    el("div", {}, [el("h2", { text: "Where we look" }), el("p", { class: "sub", text: "Public conversations only. We never post, vote or message for you." }),
-      el("ul", { class: "where" }, [["Reddit", "communities you name"], ["Stack Exchange", "Q&A sites"], ["Hacker News", "stories and comments"], ["Lemmy", "open forums"]].map(function (x) { return el("li", {}, [x[0], el("span", { text: x[1] })]); }))]),
-    el("div", {}, [el("h2", { text: "See what pays off" }), el("p", { class: "sub", text: "Give each lead a thumbs up or down and mark it replied, interested or won. A page shows which communities turn into customers." })])
+  var pays = el("section", { class: "sec" }, [
+    el("h2", { text: "See what pays off" }),
+    el("p", { class: "sub", text: "Give each lead a thumbs up or down and mark it replied, interested or won. A page then shows which lead types turn into customers." }),
+    el("p", { class: "sub", text: "We only use public posts. We never post, vote or message for you." })
   ]);
   var sets = el("section", { class: "sec" }, [
     el("h2", { text: "Begin with a ready set, or write your own" }),
-    el("p", { class: "sub", text: "Every set fills in keywords, rival products and communities. You can change all of it." }),
+    el("p", { class: "sub", text: "Every set fills in your words and rival products. You can change all of it." }),
     el("ul", { class: "chips" }, ["Salesforce: duplicate leads", "Salesforce: lead routing", "Salesforce: CPQ and quoting", "Salesforce: data quality", "Restaurants: tips, scheduling, payroll", "Your own product"].map(function (x) { return el("li", { text: x }); }))
   ]);
   var cta = el("section", { class: "cta" }, [
@@ -266,7 +266,7 @@ function drawLanding(app) {
   var foot = el("footer", { class: "f" }, [el("p", { text: "Lead Finder reads public posts only. A person writes every reply. Early test version." })]);
   var nav = el("div", { class: "lnav" }, [el("a", { class: "brand", href: "#/" }, [el("i"), "Lead Finder"]), el("span", { class: "sp" }),
     el("button", { id: "navsignin", text: "Sign in", onclick: function () { location.hash = "#/signin"; } })]);
-  app.appendChild(el("div", { class: "wrap" }, [nav, hero, how, where, sets, cta, foot]));
+  app.appendChild(el("div", { class: "wrap" }, [nav, hero, how, pays, sets, cta, foot]));
 }
 
 /* ---------- sign in / sign up ---------- */
