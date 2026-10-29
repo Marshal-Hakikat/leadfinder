@@ -186,7 +186,9 @@ async function loadProjects() {
   state.projects = res.data || [];
 }
 
+var renderId = 0;
 async function render() {
+  var my = ++renderId;
   var app = $("#app");
   if (!state.user) {
     $("#top").hidden = true; app.className = "landing";
@@ -202,6 +204,7 @@ async function render() {
   try {
     await loadProjects();
     var lr = await sb.from("app_status").select("last_run").maybeSingle();
+    if (my !== renderId) return;   // a newer draw has started: drop this one
     $("#lastrun").textContent = lr && lr.data && lr.data.last_run ? "Last search: " + ago(lr.data.last_run) : "No search has run yet";
     if (r[0] === "products") return r[1] === "new" ? drawForm(app, null) : r[1] === "edit" ? drawForm(app, state.projects.filter(function (p) { return p.id === r[2]; })[0]) : drawProducts(app);
     if (r[0] === "working") return drawWorking(app);
