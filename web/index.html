@@ -228,39 +228,39 @@ function drawLanding(app) {
   var hero = el("section", { class: "hero" }, [
     el("div", {}, [
       el("h1", { text: "Find the people who are asking for what you built." }),
-      el("p", { class: "lead", text: "Describe the problem your product solves. Every day we read public forums and show you the posts where someone needs it, with a reply idea for each one." }),
-      el("div", { class: "row" }, [el("button", { class: "primary big", id: "startfree", text: "Start free", onclick: toSignup })]),
+      el("p", { class: "lead", text: "Type the words your future customers use when they complain. Each morning we read public forums and list the posts that sound like them, with a reply idea for each." }),
+      el("div", { class: "row" }, [el("button", { class: "primary big", id: "startfree", text: "Get started", onclick: toSignup })]),
       el("p", { class: "fine", text: "Free while we test. No card needed." })
     ]),
-    el("div", { class: "sample", "aria-label": "Example lead" }, [
-      el("div", { class: "tag" }, [el("span", { text: "Example lead" }), el("span", { class: "score s-hi", text: "9" })]),
+    el("div", { class: "sample", "aria-label": "Sample post" }, [
+      el("div", { class: "tag" }, [el("span", { text: "Sample post" }), el("span", { class: "score s-hi", text: "9" })]),
       el("div", { class: "meta", text: "r/salesforce, 2 days ago" }),
       (function () { var h = el("h3"); h.appendChild(mk("Anyone found a dedupe tool that isn't expensive for a small team?", ["dedupe tool"])); return h; })(),
       (function () { var p = el("p"); p.appendChild(mk("Our web-to-lead form keeps creating duplicate leads and native rules miss half of them.", ["duplicate leads"])); return p; })(),
-      el("div", { class: "meta" }, [el("span", { class: "pill", text: "Asking for a tool" }), " Why: asks for a tool, small team, price-sensitive"]),
+      el("div", { class: "meta" }, [el("span", { class: "pill", text: "Wants a tool" }), " Why: asks for a tool, small team, price-sensitive"]),
       el("div", { class: "angle", text: "Reply idea: Explain how to catch web-to-lead duplicates with matching rules first. Mention a tool only if they ask." })
     ])
   ]);
   var how = el("section", { class: "sec" }, [
-    el("h2", { text: "Three steps. Then it runs every day." }),
+    el("h2", { text: "Set it up once. It checks every day." }),
     el("ol", { class: "steps" }, [
-      ["1", "Describe the problem", "Pick a ready-made set or type up to 15 words people use when they have the problem you solve."],
-      ["2", "We listen daily", "We read public posts in the communities you choose and score each one for your product."],
-      ["3", "You reply, as a person", "Each lead shows why it matched and an idea for a helpful reply. You write and post it yourself."]
+      ["1", "Pick your words", "Choose a ready-made set or type up to 15 words and phrases your future customers would use."],
+      ["2", "We read the forums", "Each morning we check the communities you chose and rate every new post against your words."],
+      ["3", "You answer, as yourself", "Every lead shows why it was picked and a way to help. You write and send the reply yourself."]
     ].map(function (x) { return el("li", {}, [el("div", { class: "n", text: x[0] }), el("div", {}, [el("h3", { text: x[1] }), el("p", { text: x[2] })])]); }))
   ]);
   var where = el("section", { class: "sec two" }, [
-    el("div", {}, [el("h2", { text: "Where we listen" }), el("p", { class: "sub", text: "Public conversations only. We never post, vote or message for you." }),
+    el("div", {}, [el("h2", { text: "Where we look" }), el("p", { class: "sub", text: "Public conversations only. We never post, vote or message for you." }),
       el("ul", { class: "where" }, [["Reddit", "communities you name"], ["Stack Exchange", "Q&A sites"], ["Hacker News", "stories and comments"], ["Lemmy", "open forums"]].map(function (x) { return el("li", {}, [x[0], el("span", { text: x[1] })]); }))]),
-    el("div", {}, [el("h2", { text: "It learns what works" }), el("p", { class: "sub", text: "Give each lead a thumbs up or down and mark it replied, interested or won. A page shows which communities turn into customers." })])
+    el("div", {}, [el("h2", { text: "See what pays off" }), el("p", { class: "sub", text: "Give each lead a thumbs up or down and mark it replied, interested or won. A page shows which communities turn into customers." })])
   ]);
   var sets = el("section", { class: "sec" }, [
-    el("h2", { text: "Start from a ready-made set, or write your own" }),
+    el("h2", { text: "Begin with a ready set, or write your own" }),
     el("p", { class: "sub", text: "Every set fills in keywords, rival products and communities. You can change all of it." }),
     el("ul", { class: "chips" }, ["Salesforce: duplicate leads", "Salesforce: lead routing", "Salesforce: CPQ and quoting", "Salesforce: data quality", "Restaurants: tips, scheduling, payroll", "Your own product"].map(function (x) { return el("li", { text: x }); }))
   ]);
   var cta = el("section", { class: "cta" }, [
-    el("div", {}, [el("h2", { text: "Try it on your product this week" }), el("p", { text: "Free while we test. Up to 3 products. Your first leads arrive after the next daily search." })]),
+    el("div", {}, [el("h2", { text: "Put your product to the test" }), el("p", { text: "Free while we test. Up to 3 products. Your first leads arrive after the next daily search." })]),
     el("button", { class: "big", id: "startfree2", text: "Create an account", onclick: toSignup })
   ]);
   var foot = el("footer", { class: "f" }, [el("p", { text: "Lead Finder reads public posts only. A person writes every reply. Early test version." })]);
@@ -410,7 +410,7 @@ async function drawLeads(app, pid) {
   var ps = el("select", { id: "fproj" }, state.projects.map(function (p) { return el("option", { value: p.id, text: p.name }); }));
   ps.value = cur.id;
   var min = el("select", { id: "fmin" }, [["4", "Score 4 and up"], ["7", "Score 7 and up (best)"], ["1", "All matches"]].map(function (x) { return el("option", { value: x[0], text: x[1] }); }));
-  var typ = el("select", { id: "ftype" }, [["", "All types"], ["tool_request", "Asking for a tool"], ["competitor", "Mentions a competitor"], ["pain", "Has the problem"], ["discussion", "Discussion"]].map(function (x) { return el("option", { value: x[0], text: x[1] }); }));
+  var typ = el("select", { id: "ftype" }, [["", "All types"], ["tool_request", "Wants a tool"], ["competitor", "Mentions a competitor"], ["pain", "Has the problem"], ["discussion", "Discussion"]].map(function (x) { return el("option", { value: x[0], text: x[1] }); }));
   var hide = el("input", { type: "checkbox", id: "fhide", style: "width:auto" }); hide.checked = true;
   var csv = el("button", { id: "csv", text: "Export CSV" });
   bar.appendChild(ps); bar.appendChild(min); bar.appendChild(typ);
