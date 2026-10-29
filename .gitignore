@@ -1,0 +1,4 @@
+__pycache__/
+demo.db
+demo_leads.*
+live_test.db
