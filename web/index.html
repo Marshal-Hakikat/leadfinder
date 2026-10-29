@@ -244,7 +244,7 @@ function drawLanding(app) {
   var how = el("section", { class: "sec" }, [
     el("h2", { text: "Set it up once. It checks every day." }),
     el("ol", { class: "steps" }, [
-      ["1", "Pick your words", "Add up to 15 phrases that give a need away, like \"tip pooling\" or \"duplicate leads\". Or begin with one of our sets."],
+      ["1", "Pick your words", "Add the phrases that give a need away, like \"tip pooling\" or \"duplicate leads\". Or begin with one of our sets."],
       ["2", "We search for you", "Each morning we look through public posts and rate every new one against your words."],
       ["3", "You answer, as yourself", "Every lead shows why it was picked and a way to help. You write and send the reply yourself."]
     ].map(function (x) { return el("li", {}, [el("div", { class: "n", text: x[0] }), el("div", {}, [el("h3", { text: x[1] }), el("p", { text: x[2] })])]); }))
@@ -353,7 +353,7 @@ function drawForm(app, p) {
   var subs = el("textarea", { id: "subs" }); subs.value = p.subreddits.join("\n");
   var ses = el("input", { id: "ses", value: p.se_sites.join(", ") });
   var small = el("input", { type: "checkbox", id: "small", style: "width:auto" }); small.checked = p.small_companies;
-  function count() { var n = lines(kw.value).length; kwCount.textContent = n + " of 15"; kwCount.className = "count" + (n > 15 ? " over" : ""); }
+  function count() { var n = lines(kw.value).length; kwCount.textContent = n + " of 12"; kwCount.className = "count" + (n > 12 ? " over" : ""); }
   kw.addEventListener("input", count);
   function add(label, hint, node, extra) {
     f.appendChild(el("label", { text: label }, [hint ? el("span", { class: "hint", text: " " + hint }) : null]));
@@ -361,7 +361,7 @@ function drawForm(app, p) {
   }
   add("Product name", "", name);
   add("What problem does it solve?", "in plain words, who it is for", desc);
-  add("Keywords", "one per line, up to 15: words people use when they have the problem", kw, kwCount);
+  add("Keywords", "one per line, up to 12: words people use when they have the problem", kw, kwCount);
   add("Context word", "optional, for example: salesforce or restaurant", ctx);
   add("Competitors", "optional, up to 10: a post that mentions one scores high", comp);
   add("Words to avoid", "optional, up to 10: posts with these score lower", exc);
@@ -379,7 +379,7 @@ function drawForm(app, p) {
     el("button", { class: "primary", id: "save", text: "Save", onclick: async function () {
       var k = lines(kw.value);
       if (!name.value.trim()) { say("Please type a product name.", true); return render(); }
-      if (k.length < 1 || k.length > 15) { say("Use between 1 and 15 keywords (you have " + k.length + ").", true); return render(); }
+      if (k.length < 1 || k.length > 12) { say("Use between 1 and 12 keywords (you have " + k.length + ").", true); return render(); }
       var row = {
         name: name.value.trim(), description: desc.value.trim(), context: ctx.value.trim(), keywords: k,
         competitors: lines(comp.value), exclude_words: lines(exc.value),
