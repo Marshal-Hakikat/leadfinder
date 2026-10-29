@@ -228,7 +228,7 @@ function drawLanding(app) {
   var hero = el("section", { class: "hero" }, [
     el("div", {}, [
       el("h1", { text: "Be there the day someone asks for what you make." }),
-      el("p", { class: "lead", text: "Type the words your future customers use when they complain. Each morning we search public posts and list the ones that sound like them, with a reply idea for each." }),
+      el("p", { class: "lead", text: "Give us the phrases that give a need away. Every morning we scan public posts for them and hand you the matches, each with an idea for your reply." }),
       el("div", { class: "row" }, [el("button", { class: "primary big", id: "startfree", text: "Get started", onclick: toSignup })]),
       el("p", { class: "fine", text: "Free while we test. No card needed." })
     ]),
@@ -244,7 +244,7 @@ function drawLanding(app) {
   var how = el("section", { class: "sec" }, [
     el("h2", { text: "Set it up once. It checks every day." }),
     el("ol", { class: "steps" }, [
-      ["1", "Pick your words", "Choose a ready-made set or type up to 15 words and phrases your future customers would use."],
+      ["1", "Pick your words", "Add up to 15 phrases that give a need away, like \"tip pooling\" or \"duplicate leads\". Or begin with one of our sets."],
       ["2", "We search for you", "Each morning we look through public posts and rate every new one against your words."],
       ["3", "You answer, as yourself", "Every lead shows why it was picked and a way to help. You write and send the reply yourself."]
     ].map(function (x) { return el("li", {}, [el("div", { class: "n", text: x[0] }), el("div", {}, [el("h3", { text: x[1] }), el("p", { text: x[2] })])]); }))
