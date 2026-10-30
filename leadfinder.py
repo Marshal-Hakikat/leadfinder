@@ -485,20 +485,23 @@ def reddit_source():
 def fetch_stackexchange(projects):
     jobs, seen, out = [], set(), []
     for p in projects:
+        tag = (p.get("context") or "").strip().lower().replace(" ", "-")
         for site in p["sources"]["stackexchange_sites"]:
-            jobs += [(site, q) for q in p["sources"]["queries"]]
-    for site, q in jobs:
-        if (site, q) in seen:
+            jobs += [(site, q, tag if site == "stackoverflow" else "") for q in p["sources"]["queries"]]
+    for site, q, tag in jobs:
+        if (site, q, tag) in seen:
             continue
-        seen.add((site, q))
+        seen.add((site, q, tag))
         try:
             r = _get("https://api.stackexchange.com/2.3/search/advanced",
                      params={"order": "desc", "sort": "creation", "q": q, "site": site,
                              "pagesize": 30, "filter": "withbody",
+                             **({"tagged": tag} if tag else {}),
                              **({"key": os.environ["SE_KEY"]} if os.environ.get("SE_KEY") else {})})
             for it in r.json().get("items", []):
                 out.append({
-                    "source": f"{site}.stackexchange", "url": it["link"],
+                    "source": "stackoverflow" if site == "stackoverflow" else f"{site}.stackexchange",
+                    "url": it["link"],
                     "title": html.unescape(it.get("title", "")),
                     "body": strip_html(it.get("body", "")),
                     "author": (it.get("owner") or {}).get("display_name", ""),
@@ -506,6 +509,8 @@ def fetch_stackexchange(projects):
                 })
         except Exception as e:
             print(f"  ! stackexchange {site} '{q}': {e}", file=sys.stderr)
+            if "429" in str(e) or "throttle" in str(e).lower():
+                break
         time.sleep(1)
     return out
 
@@ -533,6 +538,121 @@ def fetch_hn(projects):
             print(f"  ! hackernews '{q}': {e}", file=sys.stderr)
         time.sleep(1)
     return out
+
+
+# --------------------------------------------------------------------------
+# More free sources: Bluesky, Mastodon (hashtags) and Dev.to
+# --------------------------------------------------------------------------
+def _search_words(projects, limit=10):
+    """The phrases to search on social sites: context word + keyword (like the HN queries)."""
+    out = []
+    for p in projects:
+        for q in p["sources"].get("hn_queries") or p["sources"].get("queries") or []:
+            if q and q not in out:
+                out.append(q)
+    return out[:limit]
+
+
+def _tags(projects, limit=6):
+    """Hashtags: the context word (for example salesforce) and one-word keywords/competitors."""
+    tags = []
+    for p in projects:
+        words = [p.get("context") or ""] + list(p.get("keywords") or []) + list(p.get("competitors") or [])
+        for w in words:
+            t = re.sub(r"[^a-z0-9]", "", (w or "").lower())
+            if 3 <= len(t) <= 30 and t not in tags and (w or "").strip().count(" ") == 0:
+                tags.append(t)
+    return tags[:limit]
+
+
+def fetch_bluesky(projects):
+    """Bluesky public search. Works without an account; if Bluesky asks for a login,
+    set BSKY_HANDLE and BSKY_APP_PASSWORD (a free app password) as GitHub Secrets."""
+    base, headers = "https://public.api.bsky.app", {}
+    handle, app_pw = os.environ.get("BSKY_HANDLE"), os.environ.get("BSKY_APP_PASSWORD")
+
+    def login():
+        r = requests.post("https://bsky.social/xrpc/com.atproto.server.createSession",
+                          json={"identifier": handle, "password": app_pw}, timeout=30)
+        r.raise_for_status()
+        return {"Authorization": "Bearer " + r.json()["accessJwt"]}
+
+    if handle and app_pw:
+        try:
+            headers, base = login(), "https://bsky.social"
+        except Exception as e:
+            print(f"  ! bluesky login failed: {e}", file=sys.stderr)
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - MAX_AGE_DAYS * 86400))
+    out = []
+    for q in _search_words(projects):
+        try:
+            r = requests.get(base + "/xrpc/app.bsky.feed.searchPosts",
+                             params={"q": q, "sort": "latest", "limit": 50, "since": since},
+                             headers={"User-Agent": USER_AGENT, **headers}, timeout=30)
+            if r.status_code in (401, 403):
+                print(f"  ! bluesky: HTTP {r.status_code} - search needs a login. Add BSKY_HANDLE and "
+                      "BSKY_APP_PASSWORD secrets to use Bluesky.", file=sys.stderr)
+                break
+            r.raise_for_status()
+            for it in r.json().get("posts", []):
+                rec = it.get("record") or {}
+                text = rec.get("text") or ""
+                h = (it.get("author") or {}).get("handle", "")
+                rkey = (it.get("uri") or "").rsplit("/", 1)[-1]
+                if not (h and rkey and text):
+                    continue
+                out.append({"source": "bluesky", "url": f"https://bsky.app/profile/{h}/post/{rkey}",
+                            "title": text.split("\n")[0][:140], "body": text, "author": h,
+                            "created_at": _to_epoch(rec.get("createdAt") or it.get("indexedAt"))})
+        except Exception as e:
+            print(f"  ! bluesky '{q}': {e}", file=sys.stderr)
+        time.sleep(1)
+    return out
+
+
+def fetch_mastodon(projects):
+    """Mastodon public hashtag timelines (no account needed)."""
+    server = os.environ.get("MASTODON_SERVER", "mastodon.social")
+    out = []
+    for tag in _tags(projects):
+        try:
+            r = _get(f"https://{server}/api/v1/timelines/tag/{tag}", params={"limit": 40})
+            for st in r.json():
+                text = strip_html(st.get("content", ""))
+                url = st.get("url") or st.get("uri")
+                if not (text and url and url.startswith("http")):
+                    continue
+                out.append({"source": f"mastodon/#{tag}", "url": url, "title": text.split("\n")[0][:140],
+                            "body": text, "author": (st.get("account") or {}).get("acct", ""),
+                            "created_at": _to_epoch(st.get("created_at"))})
+        except Exception as e:
+            print(f"  ! mastodon #{tag}: {e}", file=sys.stderr)
+        time.sleep(1)
+    return out
+
+
+def fetch_devto(projects):
+    """Dev.to articles by tag (no account needed)."""
+    out = []
+    for tag in _tags(projects, limit=4):
+        try:
+            r = _get("https://dev.to/api/articles/latest", params={"tag": tag, "per_page": 50})
+            for a in r.json():
+                if not a.get("url"):
+                    continue
+                out.append({"source": f"dev.to/#{tag}", "url": a["url"], "title": a.get("title", ""),
+                            "body": a.get("description") or "", "author": (a.get("user") or {}).get("username", ""),
+                            "created_at": _to_epoch(a.get("published_at"))})
+        except Exception as e:
+            print(f"  ! dev.to #{tag}: {e}", file=sys.stderr)
+        time.sleep(1)
+    return out
+
+
+def all_sources():
+    return [reddit_source(), ("Stack Exchange", fetch_stackexchange), ("Hacker News", fetch_hn),
+            ("Lemmy", fetch_lemmy), ("Bluesky", fetch_bluesky), ("Mastodon", fetch_mastodon),
+            ("Dev.to", fetch_devto)]
 
 
 # --------------------------------------------------------------------------
@@ -804,8 +924,7 @@ def main():
 
     if args.command == "run":
         posts = []
-        for name, fn in [reddit_source(), ("Stack Exchange", fetch_stackexchange),
-                         ("Hacker News", fetch_hn), ("Lemmy", fetch_lemmy)]:
+        for name, fn in all_sources():
             print(f"Fetching {name}...")
             got = fn(projects)
             newest = max((g["created_at"] for g in got if g.get("created_at")), default=0)
