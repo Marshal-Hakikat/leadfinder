@@ -1,8 +1,8 @@
 {
  "project": "cleanslate",
  "name": "CleanSlate",
- "updated": "2026-10-29 15:43 UTC",
- "count": 8,
+ "updated": "2026-10-30 15:43 UTC",
+ "count": 9,
  "leads": [
   {
    "url": "https://www.reddit.com/r/salesforce/comments/1xgljp7/who_should_actually_own_duplicate_lead_cleanup/",
@@ -101,6 +101,20 @@
    "snippet": "Hi everyone,\n\nI’m a data science student working on an independent project related to my degree. I’m looking at how Salesforce/RevOps teams deal with proposed CRM data changes coming from enrichment tools, integrations, imports, or other automated sources.\n\nI’m especially interested in problems like:\n\nDuplicate records\n\nIncorrect overwrites\n\nConflicting data sources\n\nStale values\n\nFailed syncs\n\nLe",
    "scored_by": "rules",
    "first_seen": 1793250520
+  },
+  {
+   "url": "https://dev.to/caspianhayes3586/near-duplicate-support-tickets-2026-go-vector-threshold-review-4743",
+   "source": "dev.to/#dedupe",
+   "title": "Near-Duplicate Support Tickets 2026: Go Vector Threshold Review",
+   "author": "caspianhayes3586",
+   "date": "2026-10-22",
+   "created_at": 1792644254,
+   "score": 4,
+   "intent": "pain",
+   "reason": "problem keywords in title; recent",
+   "snippet": "At 03:07, the page says that answers over the logistics support archive have started citing the same...",
+   "scored_by": "rules",
+   "first_seen": 1793375006
   },
   {
    "url": "https://www.reddit.com/r/salesforce/comments/1wyzjt0/freelancers_consultants_who_do_crm_or_erp/",
