@@ -8,7 +8,7 @@ Needs these environment variables (GitHub Secrets):
   SUPABASE_URL          https://xxxx.supabase.co
   SUPABASE_SERVICE_KEY  the service_role key (secret! never put it in the website)
 Optional: REDDITAPIS_KEY (Reddit via redditapis.com), SE_KEY (free Stack Exchange key),
-  GITHUB_MODELS_TOKEN (free first-message drafts), LEADFINDER_LOCAL_MODEL (free AI lead check),
+  LEADFINDER_LOCAL_MODEL (free AI: lead check and first-message drafts),
   ANTHROPIC_API_KEY (Claude instead of the free models)
 """
 import datetime as dt
@@ -21,7 +21,7 @@ import requests
 import leadfinder as lf
 
 MAX_QUERIES = 8          # search words per product per source (keeps the run short)
-MAX_DRAFTS = int(os.environ.get("MAX_DRAFTS", "25"))   # AI first-message drafts per run
+MAX_DRAFTS = int(os.environ.get("MAX_DRAFTS", "20"))   # AI first-message drafts per run
 ANGLE_MIN_SCORE = 7
 AI_MIN_RULE_SCORE = 3    # only leads with at least this keyword score get the AI check
 AI_MAX_POSTS = int(os.environ.get("AI_MAX_POSTS", "120"))       # AI checks per run
@@ -121,11 +121,11 @@ def normalize_db_project(row):
 
 # --------------------------------------------------------------------------
 # AI draft of a first message for the best leads.
-# Uses GitHub Models (free, with the job's own GitHub token). If that is not
-# available it uses Claude when ANTHROPIC_API_KEY is set. The person always
+# Uses Claude when ANTHROPIC_API_KEY is set, otherwise the free local model
+# (LEADFINDER_LOCAL_MODEL, the same one that checks leads). The person always
 # reads, edits and sends the message themselves - nothing is posted.
 # --------------------------------------------------------------------------
-GH_MODELS_URL = "https://models.github.ai/inference/chat/completions"
+DRAFT_MAX_MINUTES = float(os.environ.get("DRAFT_MAX_MINUTES", "10"))
 
 
 def draft_prompt(proj, title, body, good_titles=()):
@@ -150,34 +150,16 @@ Reply with ONLY the message text."""
 
 
 def draft_message(proj, title, body, good_titles=()):
-    prompt = draft_prompt(proj, title, body, good_titles)
-    gh = os.environ.get("GITHUB_MODELS_TOKEN")
-    try:
-        if gh:
-            r = requests.post(GH_MODELS_URL,
-                              headers={"Authorization": f"Bearer {gh}", "Content-Type": "application/json",
-                                       "Accept": "application/json", "X-GitHub-Api-Version": "2022-11-28"},
-                              json={"model": os.environ.get("DRAFT_MODEL", "openai/gpt-4o-mini"),
-                                    "max_tokens": 250, "temperature": 0.4,
-                                    "messages": [{"role": "user", "content": prompt}]}, timeout=60)
-            if r.status_code == 429:
-                print("  ! GitHub Models: daily free limit reached; more drafts tomorrow.", file=sys.stderr)
-                return "STOP"
-            try:
-                text = r.json()["choices"][0]["message"]["content"]
-            except Exception:
-                print(f"  ! GitHub Models answered HTTP {r.status_code} ({r.headers.get('content-type')}): "
-                      f"{r.text[:200]!r}", file=sys.stderr)
-                return "FAIL"
-        elif os.environ.get("ANTHROPIC_API_KEY"):
-            text = lf.ai_ask(prompt, max_tokens=250)
-        else:
-            return None
-        text = (text or "").strip().strip('"').strip()
-        return text[:900] or None
-    except Exception as e:
-        print(f"  ! AI draft failed: {e}", file=sys.stderr)
+    if not lf.ai_available():
         return None
+    text = lf.ai_ask(draft_prompt(proj, title, body, good_titles), max_tokens=220)
+    if not text:
+        return "FAIL"
+    text = text.strip().strip('"').strip()
+    for junk in ("Here is", "Here's", "Sure"):          # small models sometimes add an intro line
+        if text.startswith(junk) and "\n" in text:
+            text = text.split("\n", 1)[1].strip()
+    return text[:900] or "FAIL"
 
 
 # --------------------------------------------------------------------------
@@ -238,6 +220,8 @@ def run(db, fetchers=None, now=None):
             per_project[p["slug"]] = out
 
         # 2) AI check: the best leads first, until the time or count limit
+        if not lf.ai_available():
+            print("  ! AI: no AI model in this run - keyword scores only, no drafts.")
         if lf.ai_available():
             by_slug = {p["slug"]: p for p in projects}
             todo = [x for rows in per_project.values() for x in rows
@@ -267,8 +251,12 @@ def run(db, fetchers=None, now=None):
                         if x["score"] >= ANGLE_MIN_SCORE and (x["project_id"], x["url"]) not in has_draft),
                        key=lambda x: -x["score"])
         by_slug = {p["slug"]: p for p in projects}
+        draft_start = time.time()
         for x in wants:
             if drafts_left <= 0:
+                break
+            if time.time() - draft_start > DRAFT_MAX_MINUTES * 60:
+                print("  drafts: time limit reached; the rest get drafts in the next run.")
                 break
             d = draft_message(by_slug[x["project_id"]], x["_post"]["title"], x["_post"]["body"],
                               feedback.get(x["project_id"], []))

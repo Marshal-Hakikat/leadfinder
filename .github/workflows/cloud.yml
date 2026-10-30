@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  models: read   # free GitHub Models for first-message drafts
 
 jobs:
   find:
@@ -28,12 +27,19 @@ jobs:
       - name: Start the free AI model
         id: ai
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 12
+        shell: bash
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
+          fail() { echo "::warning title=Free AI model::$1"; exit 1; }
+          curl -fsSL https://ollama.com/install.sh -o ollama-install.sh || fail "could not download the installer"
+          sh ollama-install.sh > ollama.log 2>&1 || fail "install failed: $(tail -c 300 ollama.log | tr '\n' ' ')"
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 2; done
-          ollama pull "$LOCAL_MODEL"
-          ollama run "$LOCAL_MODEL" "Reply with OK" --nowordwrap
+          curl -sf http://127.0.0.1:11434/api/tags >/dev/null || fail "the AI server did not start"
+          ollama pull "$LOCAL_MODEL" > pull.log 2>&1 || fail "download of $LOCAL_MODEL failed: $(tail -c 300 pull.log | tr '\r\n' '  ')"
+          curl -sf http://127.0.0.1:11434/api/generate \
+            -d "{\"model\":\"$LOCAL_MODEL\",\"prompt\":\"Reply with OK\",\"stream\":false}" > warm.json \
+            || fail "the model did not answer a test question"
+          echo "Model ready: $LOCAL_MODEL"
 
       - name: Find, check and save leads
         shell: bash
@@ -48,7 +54,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LEADFINDER_USER_AGENT: ${{ secrets.LEADFINDER_USER_AGENT }}
           LEADFINDER_LOCAL_MODEL: ${{ steps.ai.outcome == 'success' && env.LOCAL_MODEL || '' }}
-          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Short summary shown at the top of the run page (also readable through the GitHub API)
       - name: Summary
@@ -56,5 +61,5 @@ jobs:
         shell: bash
         run: |
           [ -f worker.log ] || exit 0
-          grep -E "posts$|AI checked|Drafts:|matches \(|calls used" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
+          grep -E "posts$|AI check|Drafts:|matches \(|calls used|active product" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
           grep -E "^ *!" worker.log | sort | uniq -c | sort -rn | head -8 | sed 's/^ *//' | while read -r l; do echo "::warning title=Lead run problem::$l"; done
