@@ -401,12 +401,31 @@ def fetch_redditapis(projects):
             break
         calls += 1
         try:
-            r = requests.get("https://api.redditapis.com/api/reddit/search",
-                             headers={"Authorization": f"Bearer {key}", "User-Agent": USER_AGENT},
-                             params={"q": q, "subreddit": sub, "sort": "new", "limit": 25}, timeout=30)
-            if r.status_code in (401, 402, 403, 429):
-                print(f"  ! redditapis: HTTP {r.status_code} (key, credits or limit) - stopping Reddit.",
+            r = None
+            for attempt in range(3):   # on "too fast" (429), wait and try again
+                r = requests.get("https://api.redditapis.com/api/reddit/search",
+                                 headers={"Authorization": f"Bearer {key}", "User-Agent": USER_AGENT},
+                                 params={"q": q, "subreddit": sub, "sort": "new", "limit": 25}, timeout=30)
+                if r.status_code != 429:
+                    break
+                try:
+                    wait = min(60, max(5, int(float(r.headers.get("Retry-After") or 0))))
+                except ValueError:
+                    wait = 10
+                wait = max(wait, 10 * (attempt + 1))
+                print(f"  ! redditapis: too many requests (429), waiting {wait}s and trying again.",
                       file=sys.stderr)
+                time.sleep(wait)
+            if r.status_code == 429:
+                print("  ! redditapis: still 429 after waiting (speed limit, or monthly limit used up)"
+                      " - stopping Reddit for today.", file=sys.stderr)
+                break
+            if r.status_code in (401, 403):
+                print(f"  ! redditapis: HTTP {r.status_code} - the key is wrong or not allowed. Stopping Reddit.",
+                      file=sys.stderr)
+                break
+            if r.status_code == 402:
+                print("  ! redditapis: HTTP 402 - no credits left. Stopping Reddit.", file=sys.stderr)
                 break
             r.raise_for_status()
             for d in r.json().get("posts", []):
@@ -423,7 +442,7 @@ def fetch_redditapis(projects):
                 })
         except Exception as e:
             print(f"  ! redditapis r/{sub} '{q}': {e}", file=sys.stderr)
-        time.sleep(0.5)
+        time.sleep(2)   # slower calls: fewer "too many requests" errors
     print(f"  redditapis: {calls} calls used.")
     return out
 
