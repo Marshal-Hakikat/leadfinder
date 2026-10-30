@@ -35,7 +35,11 @@ jobs:
           ollama pull "$LOCAL_MODEL"
           ollama run "$LOCAL_MODEL" "Reply with OK" --nowordwrap
 
-      - run: python cloud_worker.py
+      - name: Find, check and save leads
+        shell: bash
+        run: |
+          set -o pipefail
+          python -u cloud_worker.py 2>&1 | tee worker.log
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -45,3 +49,12 @@ jobs:
           LEADFINDER_USER_AGENT: ${{ secrets.LEADFINDER_USER_AGENT }}
           LEADFINDER_LOCAL_MODEL: ${{ steps.ai.outcome == 'success' && env.LOCAL_MODEL || '' }}
           GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Short summary shown at the top of the run page (also readable through the GitHub API)
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          [ -f worker.log ] || exit 0
+          grep -E "posts$|AI checked|Drafts:|matches \(|calls used" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
+          grep -E "^ *!" worker.log | sort | uniq -c | sort -rn | head -8 | sed 's/^ *//' | while read -r l; do echo "::warning title=Lead run problem::$l"; done
