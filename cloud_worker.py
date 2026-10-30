@@ -96,6 +96,7 @@ def normalize_db_project(row):
     hn = [f"{context} {k}".strip() for k in keywords][:5]
     return {
         "slug": row["id"],
+        "context": context,
         "name": row["name"],
         "description": row.get("description") or row["name"],
         "keywords": keywords,
@@ -111,7 +112,8 @@ def normalize_db_project(row):
             "reddit_general_subreddits": [],
             "queries": queries,
             "general_queries": queries,
-            "stackexchange_sites": list(row.get("se_sites") or [])[:4],
+            "stackexchange_sites": list(row.get("se_sites") or [])[:4]
+                                   + (["stackoverflow"] if context.lower() == "salesforce" else []),
             "hn_queries": hn,
         },
     }
@@ -154,15 +156,19 @@ def draft_message(proj, title, body, good_titles=()):
         if gh:
             r = requests.post(GH_MODELS_URL,
                               headers={"Authorization": f"Bearer {gh}", "Content-Type": "application/json",
-                                       "Accept": "application/vnd.github+json"},
+                                       "Accept": "application/json", "X-GitHub-Api-Version": "2022-11-28"},
                               json={"model": os.environ.get("DRAFT_MODEL", "openai/gpt-4o-mini"),
                                     "max_tokens": 250, "temperature": 0.4,
                                     "messages": [{"role": "user", "content": prompt}]}, timeout=60)
             if r.status_code == 429:
                 print("  ! GitHub Models: daily free limit reached; more drafts tomorrow.", file=sys.stderr)
                 return "STOP"
-            r.raise_for_status()
-            text = r.json()["choices"][0]["message"]["content"]
+            try:
+                text = r.json()["choices"][0]["message"]["content"]
+            except Exception:
+                print(f"  ! GitHub Models answered HTTP {r.status_code} ({r.headers.get('content-type')}): "
+                      f"{r.text[:200]!r}", file=sys.stderr)
+                return "FAIL"
         elif os.environ.get("ANTHROPIC_API_KEY"):
             text = lf.ai_ask(prompt, max_tokens=250)
         else:
@@ -182,8 +188,7 @@ def run(db, fetchers=None, now=None):
     print(f"{len(projects)} active product(s).")
 
     if projects:
-        fetchers = fetchers or [lf.reddit_source(), ("Stack Exchange", lf.fetch_stackexchange),
-                                ("Hacker News", lf.fetch_hn), ("Lemmy", lf.fetch_lemmy)]
+        fetchers = fetchers or lf.all_sources()
         cutoff = now - lf.MAX_AGE_DAYS * 86400
         posts = []
         for name, fn in fetchers:
@@ -257,7 +262,7 @@ def run(db, fetchers=None, now=None):
             print(f"  AI checked {done} lead(s) in {int(time.time() - started)}s ({skipped} failed).")
 
         # 3) first-message drafts for the best leads, then save
-        drafts_left, total_new, made = MAX_DRAFTS, 0, 0
+        drafts_left, total_new, made, fails = MAX_DRAFTS, 0, 0, 0
         wants = sorted((x for rows in per_project.values() for x in rows
                         if x["score"] >= ANGLE_MIN_SCORE and (x["project_id"], x["url"]) not in has_draft),
                        key=lambda x: -x["score"])
@@ -269,6 +274,12 @@ def run(db, fetchers=None, now=None):
                               feedback.get(x["project_id"], []))
             if d == "STOP":
                 break
+            if d == "FAIL":
+                fails += 1
+                if fails >= 3:
+                    print("  ! drafts: 3 failures in a row, stopping drafts for today.", file=sys.stderr)
+                    break
+                continue
             drafts_left -= 1
             if d:
                 x["angle"] = d
