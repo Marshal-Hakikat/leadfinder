@@ -9,12 +9,28 @@ jobs:
   find:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      # Free open AI model that runs inside this job (no account, no cost).
+      # To try another one, add a repository variable LEADFINDER_LOCAL_MODEL.
+      LOCAL_MODEL: ${{ vars.LEADFINDER_LOCAL_MODEL || 'qwen2.5:3b' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
+
+      # If this step fails, the job still runs with keyword scoring only.
+      - name: Start the free AI model
+        id: ai
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 2; done
+          ollama pull "$LOCAL_MODEL"
+          ollama run "$LOCAL_MODEL" "Reply with OK" --nowordwrap
+
       - run: python cloud_worker.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -23,3 +39,4 @@ jobs:
           SE_KEY: ${{ secrets.SE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LEADFINDER_USER_AGENT: ${{ secrets.LEADFINDER_USER_AGENT }}
+          LEADFINDER_LOCAL_MODEL: ${{ steps.ai.outcome == 'success' && env.LOCAL_MODEL || '' }}
