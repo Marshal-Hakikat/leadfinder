@@ -112,9 +112,10 @@ footer.f{border-top:1px solid var(--line);padding:12px 0 18px;color:var(--muted)
 (function () {
 "use strict";
 var CFG = window.LEADFINDER_CONFIG || {};
+var RECOVERY_LINK = /type=recovery/.test(location.hash + location.search);
 var sb = window.__TEST_SB__ || window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 var $ = function (s, r) { return (r || document).querySelector(s); };
-var state = { user: null, projects: [], msg: "" };
+var state = { user: null, projects: [], msg: "", recovery: RECOVERY_LINK };
 
 /* ---------- starter packs: everything is editable after choosing ---------- */
 var PACKS = {
@@ -202,6 +203,7 @@ async function render() {
     var h = route()[0];
     return (h === "signin" || h === "signup" || h === "reset") ? drawAuth(app, h) : drawLanding(app);
   }
+  if (state.recovery) { $("#top").hidden = true; app.className = "landing"; return drawNewPassword(app); }
   app.className = "";
   $("#top").hidden = false;
   $("#appname").textContent = CFG.APP_NAME || "Lead Finder";
@@ -315,6 +317,28 @@ function drawAuth(app, first) {
   }
   draw();
   app.appendChild(el("div", { class: "wrap" }, [back, box]));
+}
+
+/* ---------- new password (after clicking the reset link) ---------- */
+function drawNewPassword(app) {
+  clear(app);
+  var box = el("div", { class: "card auth" });
+  box.appendChild(el("h2", { text: "Set a new password" }));
+  var m = msgNode(); if (m) box.appendChild(m);
+  var pw1 = el("input", { type: "password", id: "newpw", autocomplete: "new-password", minlength: "8" });
+  var pw2 = el("input", { type: "password", id: "newpw2", autocomplete: "new-password", minlength: "8" });
+  box.appendChild(el("label", { for: "newpw", text: "New password" })); box.appendChild(pw1);
+  box.appendChild(el("label", { for: "newpw2", text: "Type it again" })); box.appendChild(pw2);
+  box.appendChild(el("p", {}, [el("button", { class: "primary", id: "newpwgo", text: "Save new password", onclick: async function () {
+    if (pw1.value.length < 8) { say("Password must have at least 8 characters.", true); return drawNewPassword(app); }
+    if (pw1.value !== pw2.value) { say("The two passwords are not the same.", true); return drawNewPassword(app); }
+    var res = await sb.auth.updateUser({ password: pw1.value });
+    if (res.error) { say(nice(res.error), true); return drawNewPassword(app); }
+    state.recovery = false;
+    say("Your password is changed.");
+    go("#/leads");
+  } })]));
+  app.appendChild(el("div", { class: "wrap" }, [el("p", {}, [el("a", { class: "brand", href: "#/" }, [el("i"), "Lead Finder"])]), box]));
 }
 
 /* ---------- products ---------- */
@@ -515,16 +539,17 @@ async function drawWorking(app) {
 
 /* ---------- start ---------- */
 $("#signout").addEventListener("click", async function () { await sb.auth.signOut(); location.hash = "#/"; });
-sb.auth.onAuthStateChange(function (_e, session) {
+sb.auth.onAuthStateChange(function (ev, session) {
   var u = session && session.user ? session.user : null;
+  if (ev === "PASSWORD_RECOVERY") { state.recovery = true; state.user = u; return render(); }
   if ((u && u.id) === (state.user && state.user.id)) return;
   state.user = u;
-  if (u && /^#\/(signin|signup|reset)?$|^$/.test(location.hash)) location.hash = "#/leads"; else render();
+  if (u && !state.recovery && /^#\/(signin|signup|reset)?$|^$/.test(location.hash)) location.hash = "#/leads"; else render();
 });
 sb.auth.getSession().then(function (r) {
   var s = r && r.data && r.data.session;
   if (!state.user && s) { state.user = s.user; }
-  if (state.user && /^#\/(signin|signup|reset)?$|^$/.test(location.hash)) location.hash = "#/leads"; else render();
+  if (state.user && !state.recovery && /^#\/(signin|signup|reset)?$|^$/.test(location.hash)) location.hash = "#/leads"; else render();
 });
 })();
 </script>
