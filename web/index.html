@@ -51,6 +51,7 @@ textarea{min-height:92px;resize:vertical}
 .lead a.t{font-weight:700;font-size:17px;text-decoration:none;line-height:1.35}.lead a.t:hover{text-decoration:underline}
 .meta{color:var(--muted);font-size:14px;margin:5px 0}
 .angle{border-left:4px solid var(--accent);background:var(--soft);padding:8px 12px;margin:10px 0;font-size:15px;border-radius:0 9px 9px 0}
+.draft textarea{width:100%;box-sizing:border-box;margin:6px 0;font:inherit;font-size:15px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit;resize:vertical}.draft .row{gap:8px;flex-wrap:wrap;align-items:center}.draft .dh .hint{margin-left:4px}
 .snip{color:var(--muted);font-size:15px;margin:8px 0 12px}
 .err{color:var(--bad)}.ok{color:var(--good)}
 .count{font-size:14px;color:var(--muted)}.count.over{color:var(--bad);font-weight:700}
@@ -250,7 +251,7 @@ function drawLanding(app) {
       (function () { var h = el("h3"); h.appendChild(mk("Anyone found a dedupe tool that isn't expensive for a small team?", ["dedupe tool"])); return h; })(),
       (function () { var p = el("p"); p.appendChild(mk("Our web-to-lead form keeps creating duplicate leads and native rules miss half of them.", ["duplicate leads"])); return p; })(),
       el("div", { class: "meta" }, [el("span", { class: "pill", text: "Wants a tool" }), " Why: asks for a tool, small team, price-sensitive"]),
-      el("div", { class: "angle", text: "Reply idea: Explain how to catch web-to-lead duplicates with matching rules first. Mention a tool only if they ask." })
+      el("div", { class: "angle", text: "Draft first message: Matching rules on email will catch most web-to-lead duplicates. I work on CleanSlate, which also merges the old ones." })
     ])])
   ]);
   var how = el("section", { class: "sec" }, [
@@ -486,7 +487,7 @@ function leadCard(r, cur, repaint) {
     (function () { var a = el("a", { class: "t", href: safeUrl(r.url), target: "_blank", rel: "noopener noreferrer" }); a.appendChild(mk(r.title || "(no title)", cur.keywords)); return a; })()]));
   c.appendChild(el("div", { class: "meta" }, [el("span", { class: "pill", text: (r.intent || "").replace("_", " ") }), " " + (r.source || "") + " · " + ago(r.posted_at)]));
   if (r.reason) c.appendChild(el("div", { class: "meta", text: "Why: " + r.reason }));
-  if (r.angle) c.appendChild(el("div", { class: "angle", text: "Reply idea: " + r.angle }));
+  if (r.angle) c.appendChild(draftBox(r, cur, repaint));
   if (r.snippet) { var sn = el("div", { class: "snip" }); sn.appendChild(mk(r.snippet, cur.keywords)); c.appendChild(sn); }
   var row = el("div", { class: "row" });
   STATUSES.forEach(function (s) {
@@ -499,9 +500,27 @@ function leadCard(r, cur, repaint) {
   return c;
 }
 
+function draftBox(r, cur, repaint) {
+  var box = el("div", { class: "angle draft" });
+  var ta = el("textarea", { rows: "4", "aria-label": "Draft first message" });
+  ta.value = r.angle;
+  var note = el("span", { class: "hint", text: "" });
+  var go1 = el("button", { class: "primary", text: "Copy & open post", onclick: async function () {
+    var ok = false;
+    try { await navigator.clipboard.writeText(ta.value); ok = true; } catch (e) { ta.select(); try { ok = document.execCommand("copy"); } catch (e2) {} }
+    window.open(safeUrl(r.url), "_blank", "noopener");
+    note.textContent = ok ? "Copied. Paste it under the post, check it, then send it yourself." : "Select the text and copy it by hand.";
+  } });
+  var done = el("button", { text: "I sent it", onclick: async function () { await saveStatus(r, cur, { status: "replied" }); repaint(); } });
+  box.appendChild(el("div", { class: "dh" }, [el("strong", { text: "Draft first message" }), el("span", { class: "hint", text: " Written by AI. Read it and make it yours before you send." })]));
+  box.appendChild(ta);
+  box.appendChild(el("div", { class: "row" }, [go1, r.status === "replied" ? null : done, note]));
+  return box;
+}
+
 function downloadCsv(rows, name) {
   function q(v) { v = String(v == null ? "" : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
-  var out = ["score,type,status,source,posted,title,url,why,reply idea"];
+  var out = ["score,type,status,source,posted,title,url,why,draft message"];
   rows.forEach(function (r) { out.push([r.score, r.intent, r.status, r.source, r.posted_at, r.title, r.url, r.reason, r.angle].map(q).join(",")); });
   var a = el("a", { href: URL.createObjectURL(new Blob([out.join("\n")], { type: "text/csv" })), download: name.replace(/\W+/g, "_") + "_leads.csv" });
   document.body.appendChild(a); a.click(); a.remove();
@@ -534,7 +553,7 @@ async function drawWorking(app) {
   }
   table("By community", "source"); table("By lead type", "intent");
   if (state.projects.length > 1) table("By product", "project_id");
-  app.appendChild(el("p", { class: "hint", text: "Your thumbs up/down are saved with every lead. When the AI key is on, liked leads help it write better reply ideas." }));
+  app.appendChild(el("p", { class: "hint", text: "Your thumbs up/down are saved with every lead. The AI uses the leads you liked to judge new posts and write better first messages." }));
 }
 
 /* ---------- start ---------- */
