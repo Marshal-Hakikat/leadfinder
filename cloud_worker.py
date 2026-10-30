@@ -22,6 +22,9 @@ import leadfinder as lf
 MAX_QUERIES = 8          # search words per product per source (keeps the run short)
 MAX_ANGLES = 30          # AI reply-angle calls per run (keeps the cost small)
 ANGLE_MIN_SCORE = 7
+AI_MIN_RULE_SCORE = 3    # only leads with at least this keyword score get the AI check
+AI_MAX_POSTS = int(os.environ.get("AI_MAX_POSTS", "120"))       # AI checks per run
+AI_MAX_MINUTES = float(os.environ.get("AI_MAX_MINUTES", "20"))  # stop AI checks after this
 BATCH = 200
 
 
@@ -183,25 +186,56 @@ def run(db, fetchers=None, now=None):
         feedback = {}
         for f in db.select("lead_status", {"select": "project_id,title,feedback", "feedback": "eq.good"}):
             feedback.setdefault(f["project_id"], []).append(f.get("title") or "")
-        angles_left, total_new = MAX_ANGLES, 0
+        # 1) keyword rules for every product
+        per_project = {}
         for p in projects:
-            out, strong = [], []
+            out = []
             for r in recent:
                 if existing.get((p["slug"], r["url"])) == "llm":
-                    continue
+                    continue            # the AI already judged this one; keep its answer
                 score, kind, reason = lf.rule_score(p, r["title"], r["body"], to_ts(r["created_at"]))
-                is_new = (p["slug"], r["url"]) not in existing
                 if score <= 0:
                     continue
-                row = {"project_id": p["slug"], "url": r["url"], "score": score, "intent": kind,
-                       "reason": reason, "scored_by": "rules"}
-                out.append(row)
-                if is_new and score >= ANGLE_MIN_SCORE and angles_left > 0:
+                out.append({"project_id": p["slug"], "url": r["url"], "score": score, "intent": kind,
+                            "reason": reason, "scored_by": "rules", "_post": r})
+            per_project[p["slug"]] = out
+
+        # 2) AI check: the best leads first, until the time or count limit
+        if lf.ai_available():
+            by_slug = {p["slug"]: p for p in projects}
+            todo = [x for rows in per_project.values() for x in rows if x["score"] >= AI_MIN_RULE_SCORE]
+            todo.sort(key=lambda x: (-x["score"], -to_ts(x["_post"]["created_at"])))
+            todo = todo[:AI_MAX_POSTS]
+            started, done, skipped = time.time(), 0, 0
+            print(f"AI check: {len(todo)} lead(s) to check.")
+            for x in todo:
+                if time.time() - started > AI_MAX_MINUTES * 60:
+                    print(f"  time limit reached; the rest will be checked in the next run.")
+                    break
+                res = lf.llm_score(by_slug[x["project_id"]], x["_post"]["title"], x["_post"]["body"],
+                                   feedback.get(x["project_id"], []))
+                if not res:
+                    skipped += 1
+                    continue
+                score, kind, reason = res
+                x.update({"score": score, "intent": kind or x["intent"],
+                          "reason": "AI: " + reason if reason else x["reason"], "scored_by": "llm"})
+                done += 1
+            print(f"  AI checked {done} lead(s) in {int(time.time() - started)}s ({skipped} failed).")
+
+        # 3) reply ideas and save
+        angles_left, total_new = MAX_ANGLES, 0
+        for p in projects:
+            out = per_project[p["slug"]]
+            for row in out:
+                r = row.pop("_post")
+                is_new = (p["slug"], r["url"]) not in existing
+                total_new += is_new
+                if is_new and row["score"] >= ANGLE_MIN_SCORE and angles_left > 0:
                     a = llm_angle(p, r["title"], r["body"], feedback.get(p["slug"], []))
                     if a:
                         row["angle"] = a
                         angles_left -= 1
-                total_new += is_new
             # PostgREST needs the same columns in every row of one request
             with_angle = [x for x in out if "angle" in x]
             without = [x for x in out if "angle" not in x]

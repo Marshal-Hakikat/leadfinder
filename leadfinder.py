@@ -231,43 +231,80 @@ def rule_score(proj, title, body, created_at):
 
 
 # --------------------------------------------------------------------------
-# OPTIONAL AI SCORING (needs ANTHROPIC_API_KEY; skipped if not set)
+# OPTIONAL AI SCORING
+# Uses Claude when ANTHROPIC_API_KEY is set. Otherwise uses a free local model
+# through Ollama when LEADFINDER_LOCAL_MODEL is set (for example qwen2.5:3b).
+# If neither is set, AI scoring is skipped and the keyword rules are used.
 # --------------------------------------------------------------------------
-def llm_score(proj, title, body):
+OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+
+
+def ai_available():
+    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("LEADFINDER_LOCAL_MODEL"))
+
+
+def ai_ask(prompt, max_tokens=250, want_json=False):
+    """Send one prompt to the AI model. Returns the reply text, or None on any problem."""
     key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
+    local = os.environ.get("LEADFINDER_LOCAL_MODEL")
+    try:
+        if key:
+            r = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                         "content-type": "application/json"},
+                json={"model": os.environ.get("LEADFINDER_MODEL", "claude-haiku-5-5"),
+                      "max_tokens": max_tokens,
+                      "messages": [{"role": "user", "content": prompt}]},
+                timeout=60)
+            r.raise_for_status()
+            return r.json()["content"][0]["text"]
+        if local:
+            body = {"model": local, "stream": False,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "options": {"temperature": 0, "num_predict": max_tokens, "num_ctx": 2048}}
+            if want_json:
+                body["format"] = "json"
+            r = requests.post(OLLAMA_URL + "/api/chat", json=body, timeout=180)
+            r.raise_for_status()
+            return r.json()["message"]["content"]
+    except Exception as e:  # never let one bad call stop the run
+        print(f"  ! AI call failed: {e}", file=sys.stderr)
+    return None
+
+
+def llm_score(proj, title, body, liked=()):
+    """Ask the AI if the post author is a real buyer. Returns (score, intent, reason) or None."""
+    if not ai_available():
         return None
-    model = os.environ.get("LEADFINDER_MODEL", "claude-haiku-5-5")
-    examples = ""
-    if proj["examples"]:
-        examples = "\nExamples of posts that ARE good leads for this product:\n" + \
-                   "\n".join(f"- {e[:300]}" for e in proj["examples"]) + "\n"
-    prompt = f"""You are qualifying sales leads. Product: {proj['description']}
-{examples}
+    examples = list(proj.get("examples") or []) + [t for t in liked if t]
+    ex = ""
+    if examples:
+        ex = "\nExamples of posts that ARE good leads for this product:\n" + \
+             "\n".join(f"- {e[:200]}" for e in examples[:5]) + "\n"
+    prompt = f"""You are checking sales leads. Product: {proj['description']}
+{ex}
 Public post:
 TITLE: {title}
-BODY: {(body or '')[:2500]}
+BODY: {(body or '')[:1500]}
 
-Score 1-10 how likely the author (or their company) would buy this product.
-9-10 = actively asking for a tool or unhappy with a competitor;
-6-8 = clear problem, no tool request yet; 3-5 = vague/related;
-1-2 = unrelated, learning/exam question, or already solved.
-Reply with ONLY JSON: {{"score": int, "intent": "tool_request|competitor|pain|discussion", "reason": "one sentence"}}"""
+Is the author (or their company) a likely buyer of this product?
+Score 1-10: 9-10 = asking for a tool or unhappy with a competitor;
+6-8 = has the problem but did not ask for a tool; 3-5 = related but vague;
+1-2 = not a buyer (student, exam or homework question, job post, news, already solved, or a vendor selling something).
+Reply with ONLY JSON: {{"score": 1-10, "intent": "tool_request|competitor|pain|discussion", "reason": "one short sentence: who they are and what they need"}}"""
+    text = ai_ask(prompt, max_tokens=200, want_json=True)
+    if not text:
+        return None
     try:
-        r = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"},
-            json={"model": model, "max_tokens": 250,
-                  "messages": [{"role": "user", "content": prompt}]},
-            timeout=60,
-        )
-        r.raise_for_status()
-        text = r.json()["content"][0]["text"]
         data = json.loads(re.search(r"\{.*\}", text, re.S).group(0))
-        return int(data["score"]), str(data.get("intent", "")), str(data.get("reason", ""))
-    except Exception as e:  # never let one bad call stop the run
-        print(f"  ! AI scoring failed: {e}", file=sys.stderr)
+        score = max(1, min(10, int(float(data["score"]))))
+        intent = str(data.get("intent", "")).strip().lower()
+        if intent not in ("tool_request", "competitor", "pain", "discussion"):
+            intent = ""
+        return score, intent, str(data.get("reason", "")).strip()[:300]
+    except Exception as e:
+        print(f"  ! AI answer not understood: {e}", file=sys.stderr)
         return None
 
 
