@@ -8,7 +8,8 @@ Needs these environment variables (GitHub Secrets):
   SUPABASE_URL          https://xxxx.supabase.co
   SUPABASE_SERVICE_KEY  the service_role key (secret! never put it in the website)
 Optional: REDDITAPIS_KEY (Reddit via redditapis.com), SE_KEY (free Stack Exchange key),
-  ANTHROPIC_API_KEY (reply angles)
+  GITHUB_MODELS_TOKEN (free first-message drafts), LEADFINDER_LOCAL_MODEL (free AI lead check),
+  ANTHROPIC_API_KEY (Claude instead of the free models)
 """
 import datetime as dt
 import os
@@ -20,7 +21,7 @@ import requests
 import leadfinder as lf
 
 MAX_QUERIES = 8          # search words per product per source (keeps the run short)
-MAX_ANGLES = 30          # AI reply-angle calls per run (keeps the cost small)
+MAX_DRAFTS = int(os.environ.get("MAX_DRAFTS", "25"))   # AI first-message drafts per run
 ANGLE_MIN_SCORE = 7
 AI_MIN_RULE_SCORE = 3    # only leads with at least this keyword score get the AI check
 AI_MAX_POSTS = int(os.environ.get("AI_MAX_POSTS", "120"))       # AI checks per run
@@ -117,34 +118,59 @@ def normalize_db_project(row):
 
 
 # --------------------------------------------------------------------------
-# Optional AI: a short, helpful reply idea for the best leads
+# AI draft of a first message for the best leads.
+# Uses GitHub Models (free, with the job's own GitHub token). If that is not
+# available it uses Claude when ANTHROPIC_API_KEY is set. The person always
+# reads, edits and sends the message themselves - nothing is posted.
 # --------------------------------------------------------------------------
-def llm_angle(proj, title, body, good_titles=()):
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        return None
+GH_MODELS_URL = "https://models.github.ai/inference/chat/completions"
+
+
+def draft_prompt(proj, title, body, good_titles=()):
     liked = ""
     if good_titles:
-        liked = "\nThe customer liked leads like:\n" + "\n".join(f"- {t[:120]}" for t in good_titles[:3]) + "\n"
-    prompt = f"""Product: {proj['description']}
+        liked = "\nThe product team liked leads like:\n" + "\n".join(f"- {t[:120]}" for t in good_titles[:3]) + "\n"
+    return f"""You help a small product team answer people on public forums.
+Product name: {proj['name']}
+What it does: {proj['description']}
 {liked}
 Public post:
 TITLE: {title}
 BODY: {(body or '')[:1800]}
 
-In ONE or TWO plain sentences, suggest how a person from this product's team could
-reply in a genuinely helpful way (answer the question first; mention the product
-only if it truly fits). Do not write the full reply. No hype."""
+Write the first reply this team could post under that post.
+Rules:
+- First, actually help: answer the question or give one useful tip.
+- Mention {proj['name']} only if it truly fits the need, in one sentence, and say openly "I work on {proj['name']}".
+- Use only facts from "What it does". Never invent features, prices or results.
+- 40 to 90 words. Plain, friendly, like a real person. No greeting line, no emojis, no links, no hashtags, no hype.
+Reply with ONLY the message text."""
+
+
+def draft_message(proj, title, body, good_titles=()):
+    prompt = draft_prompt(proj, title, body, good_titles)
+    gh = os.environ.get("GITHUB_MODELS_TOKEN")
     try:
-        r = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={"model": os.environ.get("LEADFINDER_MODEL", "claude-haiku-5-5"), "max_tokens": 200,
-                  "messages": [{"role": "user", "content": prompt}]}, timeout=60)
-        r.raise_for_status()
-        return r.json()["content"][0]["text"].strip()[:400]
+        if gh:
+            r = requests.post(GH_MODELS_URL,
+                              headers={"Authorization": f"Bearer {gh}", "Content-Type": "application/json",
+                                       "Accept": "application/vnd.github+json"},
+                              json={"model": os.environ.get("DRAFT_MODEL", "openai/gpt-4o-mini"),
+                                    "max_tokens": 250, "temperature": 0.4,
+                                    "messages": [{"role": "user", "content": prompt}]}, timeout=60)
+            if r.status_code == 429:
+                print("  ! GitHub Models: daily free limit reached; more drafts tomorrow.", file=sys.stderr)
+                return "STOP"
+            r.raise_for_status()
+            text = r.json()["choices"][0]["message"]["content"]
+        elif os.environ.get("ANTHROPIC_API_KEY"):
+            text = lf.ai_ask(prompt, max_tokens=250)
+        else:
+            return None
+        text = (text or "").strip().strip('"').strip()
+        return text[:900] or None
     except Exception as e:
-        print(f"  ! AI angle failed: {e}", file=sys.stderr)
+        print(f"  ! AI draft failed: {e}", file=sys.stderr)
         return None
 
 
@@ -181,8 +207,10 @@ def run(db, fetchers=None, now=None):
 
     if projects:
         recent = db.select("raw_posts", {"select": "url,source,title,body,created_at", "order": "url.asc"})
-        existing = {(m["project_id"], m["url"]): m["scored_by"]
-                    for m in db.select("matches", {"select": "project_id,url,scored_by", "order": "url.asc"})}
+        old_rows = db.select("matches", {"select": "project_id,url,scored_by,angle,score,intent,reason", "order": "url.asc"})
+        existing = {(m["project_id"], m["url"]): m["scored_by"] for m in old_rows}
+        has_draft = {(m["project_id"], m["url"]) for m in old_rows if m.get("angle")}
+        judged = {(m["project_id"], m["url"]): m for m in old_rows if m["scored_by"] == "llm"}
         feedback = {}
         for f in db.select("lead_status", {"select": "project_id,title,feedback", "feedback": "eq.good"}):
             feedback.setdefault(f["project_id"], []).append(f.get("title") or "")
@@ -191,8 +219,12 @@ def run(db, fetchers=None, now=None):
         for p in projects:
             out = []
             for r in recent:
-                if existing.get((p["slug"], r["url"])) == "llm":
-                    continue            # the AI already judged this one; keep its answer
+                old = judged.get((p["slug"], r["url"]))
+                if old:                 # the AI already judged this one; keep its answer
+                    out.append({"project_id": p["slug"], "url": r["url"], "score": old["score"],
+                                "intent": old["intent"], "reason": old["reason"], "scored_by": "llm",
+                                "_post": r, "_judged": True})
+                    continue
                 score, kind, reason = lf.rule_score(p, r["title"], r["body"], to_ts(r["created_at"]))
                 if score <= 0:
                     continue
@@ -203,7 +235,8 @@ def run(db, fetchers=None, now=None):
         # 2) AI check: the best leads first, until the time or count limit
         if lf.ai_available():
             by_slug = {p["slug"]: p for p in projects}
-            todo = [x for rows in per_project.values() for x in rows if x["score"] >= AI_MIN_RULE_SCORE]
+            todo = [x for rows in per_project.values() for x in rows
+                    if x["score"] >= AI_MIN_RULE_SCORE and not x.get("_judged")]
             todo.sort(key=lambda x: (-x["score"], -to_ts(x["_post"]["created_at"])))
             todo = todo[:AI_MAX_POSTS]
             started, done, skipped = time.time(), 0, 0
@@ -223,19 +256,31 @@ def run(db, fetchers=None, now=None):
                 done += 1
             print(f"  AI checked {done} lead(s) in {int(time.time() - started)}s ({skipped} failed).")
 
-        # 3) reply ideas and save
-        angles_left, total_new = MAX_ANGLES, 0
+        # 3) first-message drafts for the best leads, then save
+        drafts_left, total_new, made = MAX_DRAFTS, 0, 0
+        wants = sorted((x for rows in per_project.values() for x in rows
+                        if x["score"] >= ANGLE_MIN_SCORE and (x["project_id"], x["url"]) not in has_draft),
+                       key=lambda x: -x["score"])
+        by_slug = {p["slug"]: p for p in projects}
+        for x in wants:
+            if drafts_left <= 0:
+                break
+            d = draft_message(by_slug[x["project_id"]], x["_post"]["title"], x["_post"]["body"],
+                              feedback.get(x["project_id"], []))
+            if d == "STOP":
+                break
+            drafts_left -= 1
+            if d:
+                x["angle"] = d
+                made += 1
+        if wants:
+            print(f"Drafts: wrote {made} first message(s) for {len(wants)} strong lead(s).")
         for p in projects:
             out = per_project[p["slug"]]
             for row in out:
                 r = row.pop("_post")
-                is_new = (p["slug"], r["url"]) not in existing
-                total_new += is_new
-                if is_new and row["score"] >= ANGLE_MIN_SCORE and angles_left > 0:
-                    a = llm_angle(p, r["title"], r["body"], feedback.get(p["slug"], []))
-                    if a:
-                        row["angle"] = a
-                        angles_left -= 1
+                row.pop("_judged", None)
+                total_new += (p["slug"], r["url"]) not in existing
             # PostgREST needs the same columns in every row of one request
             with_angle = [x for x in out if "angle" in x]
             without = [x for x in out if "angle" not in x]
