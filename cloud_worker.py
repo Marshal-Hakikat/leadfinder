@@ -23,6 +23,7 @@ import leadfinder as lf
 MAX_QUERIES = 8          # search words per product per source (keeps the run short)
 MAX_DRAFTS = int(os.environ.get("MAX_DRAFTS", "20"))   # AI first-message drafts per run
 ANGLE_MIN_SCORE = 7
+AI_REJECT_MAX = 2        # AI score at or below this = not a buyer: removed from the Leads page
 AI_MIN_RULE_SCORE = 5    # only leads with at least this keyword score get the AI check
 AI_MAX_POSTS = int(os.environ.get("AI_MAX_POSTS", "120"))       # AI checks per run
 AI_MAX_MINUTES = float(os.environ.get("AI_MAX_MINUTES", "20"))  # stop AI checks after this
@@ -208,7 +209,8 @@ def run(db, fetchers=None, now=None):
             for r in recent:
                 old = judged.get((p["slug"], r["url"]))
                 if old:                 # the AI already judged this one; keep its answer
-                    out.append({"project_id": p["slug"], "url": r["url"], "score": old["score"],
+                    sc = old["score"] if old["score"] > AI_REJECT_MAX else 0   # rejected earlier: keep hidden
+                    out.append({"project_id": p["slug"], "url": r["url"], "score": sc,
                                 "intent": old["intent"], "reason": old["reason"], "scored_by": "llm",
                                 "_post": r, "_judged": True})
                     continue
@@ -228,7 +230,7 @@ def run(db, fetchers=None, now=None):
                     if x["score"] >= AI_MIN_RULE_SCORE and not x.get("_judged")]
             todo.sort(key=lambda x: (-x["score"], -to_ts(x["_post"]["created_at"])))
             todo = todo[:AI_MAX_POSTS]
-            started, done, skipped = time.time(), 0, 0
+            started, done, skipped, rejected = time.time(), 0, 0, 0
             print(f"AI check: {len(todo)} lead(s) to check.")
             for x in todo:
                 if time.time() - started > AI_MAX_MINUTES * 60:
@@ -240,10 +242,17 @@ def run(db, fetchers=None, now=None):
                     skipped += 1
                     continue
                 score, kind, reason = res
-                x.update({"score": score, "intent": kind or x["intent"],
-                          "reason": "AI: " + reason if reason else x["reason"], "scored_by": "llm"})
+                if score <= AI_REJECT_MAX:
+                    # kept with score 0 so the website never shows it and the next run does not add it again
+                    x.update({"score": 0, "intent": "discussion",
+                              "reason": "AI rejected: " + (reason or "not a buyer"), "scored_by": "llm"})
+                    rejected += 1
+                else:
+                    x.update({"score": score, "intent": kind or x["intent"],
+                              "reason": "AI: " + reason if reason else x["reason"], "scored_by": "llm"})
                 done += 1
-            print(f"  AI checked {done} lead(s) in {int(time.time() - started)}s ({skipped} failed).")
+            print(f"  AI checked {done} lead(s) in {int(time.time() - started)}s "
+                  f"({rejected} rejected as not a buyer, {skipped} failed).")
 
         # 3) first-message drafts for the best leads, then save
         drafts_left, total_new, made, fails = MAX_DRAFTS, 0, 0, 0
@@ -285,7 +294,9 @@ def run(db, fetchers=None, now=None):
             without = [x for x in out if "angle" not in x]
             db.upsert("matches", without, "project_id,url")
             db.upsert("matches", with_angle, "project_id,url")
-            print(f"{p['name']}: {len(out)} matches ({sum(1 for x in out if (p['slug'], x['url']) not in existing)} new).")
+            shown = [x for x in out if x["score"] > 0]
+            print(f"{p['name']}: {len(shown)} leads shown "
+                  f"({sum(1 for x in shown if (p['slug'], x['url']) not in existing)} new).")
 
     db.update("app_status", {"id": "eq.1"}, {"last_run": iso(now), "note": f"{len(projects)} products"})
 

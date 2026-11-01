@@ -63,5 +63,5 @@ jobs:
         shell: bash
         run: |
           [ -f worker.log ] || exit 0
-          grep -E "posts$|AI check|Drafts:|matches \(|calls used|active product" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
+          grep -E "posts$|AI check|Drafts:|leads shown|calls used|active product" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
           grep -E "^ *!" worker.log | sort | uniq -c | sort -rn | head -8 | sed 's/^ *//' | while read -r l; do echo "::warning title=Lead run problem::$l"; done
