@@ -70,7 +70,7 @@ Each post gets 0 to 10 for each product. It goes up for: your keywords in the
 title, someone asking for a tool, mentioning a competitor, small-company words,
 price words, and recent posts. It goes down for: exam or learning posts, code
 questions, enterprise words, and age (older than 1 month loses points, older
-than about 3 months is dropped).
+than about 2 months is dropped).
 
 ## Run it on your own computer
 ```

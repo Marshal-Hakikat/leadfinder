@@ -42,7 +42,7 @@ USER_AGENT = os.environ.get(
     "leadfinder/0.2 (contact: marshal.hakikat@gmail.com)",  # put your email here
 ) or "leadfinder/0.2 (contact: marshal.hakikat@gmail.com)"   # an empty secret falls back too
 NOTIFY_MIN_SCORE = 7   # webhook alert only for new leads at or above this score
-MAX_AGE_DAYS = 90      # posts older than about 3 months are dropped
+MAX_AGE_DAYS = 60      # posts older than about 2 months are dropped
 MAX_KEYWORDS = 15      # keywords used per product
 LLM_MIN_SCORE = 3      # only posts scoring this much get the optional AI check
 
