@@ -53,6 +53,8 @@ jobs:
           SE_KEY: ${{ secrets.SE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LEADFINDER_USER_AGENT: ${{ secrets.LEADFINDER_USER_AGENT }}
+          BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
+          BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
           LEADFINDER_LOCAL_MODEL: ${{ steps.ai.outcome == 'success' && env.LOCAL_MODEL || '' }}
 
       # Short summary shown at the top of the run page (also readable through the GitHub API)
