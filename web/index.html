@@ -449,8 +449,24 @@ function aiHelper(F) {
     var n = F.name.value.trim(), d = F.desc.value.trim();
     if (!n) return status("Type the product name first.", true);
     if (d.length < 20) return status("Describe the problem first (at least 20 characters).", true);
+    var input = { name: n.slice(0, 80), description: d.slice(0, 600), context: F.ctx.value.trim().slice(0, 60) };
     btn.disabled = true;
-    var res = await sb.from("keyword_suggestions").insert({ name: n.slice(0, 80), description: d.slice(0, 600), context: F.ctx.value.trim().slice(0, 60) }).select("id").single();
+    status("Asking the AI\u2026 this takes a few seconds.");
+    // Fast way: the Supabase function asks Groq and answers in seconds
+    var fx = null;
+    try { fx = await sb.functions.invoke("suggest-keywords", { body: input }); } catch (e) { fx = { error: e }; }
+    if (fx && !fx.error && fx.data) {
+      btn.disabled = false;
+      if (fx.data.result) return show(fx.data.result);
+      if (fx.data.id) return wait(fx.data.id);          // AI busy: the backup job will answer
+    }
+    var ctxR = fx && fx.error && fx.error.context;
+    if (ctxR && ctxR.status && ctxR.status !== 404 && typeof ctxR.json === "function") {
+      var j = null; try { j = await ctxR.json(); } catch (e) {}
+      if (j && j.error) { btn.disabled = false; return status(j.error, true); }
+    }
+    // Backup way (function not set up yet): the GitHub job answers within about 10 to 15 minutes
+    var res = await sb.from("keyword_suggestions").insert(input).select("id").single();
     btn.disabled = false;
     if (res.error) return status(nice(res.error), true);
     wait(res.data.id);
