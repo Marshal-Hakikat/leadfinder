@@ -444,7 +444,7 @@ async function drawLeads(app, pid) {
   var bar = el("div", { class: "card row" });
   var ps = el("select", { id: "fproj" }, state.projects.map(function (p) { return el("option", { value: p.id, text: p.name }); }));
   ps.value = cur.id;
-  var min = el("select", { id: "fmin" }, [["4", "Score 4 and up"], ["7", "Score 7 and up (best)"], ["1", "All matches"]].map(function (x) { return el("option", { value: x[0], text: x[1] }); }));
+  var min = el("select", { id: "fmin" }, [["5", "Score 5 and up"], ["7", "Score 7 and up (best)"], ["1", "All matches"]].map(function (x) { return el("option", { value: x[0], text: x[1] }); }));
   var typ = el("select", { id: "ftype" }, [["", "All types"], ["tool_request", "Wants a tool"], ["competitor", "Mentions a competitor"], ["pain", "Has the problem"], ["discussion", "Discussion"]].map(function (x) { return el("option", { value: x[0], text: x[1] }); }));
   var hide = el("input", { type: "checkbox", id: "fhide", style: "width:auto" }); hide.checked = true;
   var csv = el("button", { id: "csv", text: "Export CSV" });
@@ -482,7 +482,7 @@ async function saveStatus(r, cur, patch) {
 
 function leadCard(r, cur, repaint) {
   var c = el("div", { class: "card lead" });
-  var cls = r.score >= 7 ? "score s-hi" : r.score >= 4 ? "score s-mid" : "score";
+  var cls = r.score >= 7 ? "score s-hi" : r.score >= 5 ? "score s-mid" : "score";
   c.appendChild(el("div", { class: "row" }, [el("span", { class: cls, text: String(r.score) }),
     (function () { var a = el("a", { class: "t", href: safeUrl(r.url), target: "_blank", rel: "noopener noreferrer" }); a.appendChild(mk(r.title || "(no title)", cur.keywords)); return a; })()]));
   c.appendChild(el("div", { class: "meta" }, [el("span", { class: "pill", text: (r.intent || "").replace("_", " ") }), " " + (r.source || "") + " · " + ago(r.posted_at)]));

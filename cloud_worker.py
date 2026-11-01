@@ -23,7 +23,7 @@ import leadfinder as lf
 MAX_QUERIES = 8          # search words per product per source (keeps the run short)
 MAX_DRAFTS = int(os.environ.get("MAX_DRAFTS", "20"))   # AI first-message drafts per run
 ANGLE_MIN_SCORE = 7
-AI_MIN_RULE_SCORE = 3    # only leads with at least this keyword score get the AI check
+AI_MIN_RULE_SCORE = 5    # only leads with at least this keyword score get the AI check
 AI_MAX_POSTS = int(os.environ.get("AI_MAX_POSTS", "120"))       # AI checks per run
 AI_MAX_MINUTES = float(os.environ.get("AI_MAX_MINUTES", "20"))  # stop AI checks after this
 BATCH = 200
