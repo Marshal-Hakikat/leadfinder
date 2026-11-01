@@ -23,8 +23,9 @@ import leadfinder as lf
 MAX_QUERIES = 8          # search words per product per source (keeps the run short)
 MAX_DRAFTS = int(os.environ.get("MAX_DRAFTS", "20"))   # AI first-message drafts per run
 ANGLE_MIN_SCORE = 7
-AI_REJECT_MAX = 2        # AI score at or below this = not a buyer: removed from the Leads page
-AI_MIN_RULE_SCORE = 5    # only leads with at least this keyword score get the AI check
+MIN_SHOW_SCORE = 5       # leads below this score are never shown or kept
+AI_REJECT_MAX = MIN_SHOW_SCORE - 1   # AI score below 5 = removed (kept only as a hidden note so it is not re-added)
+AI_MIN_RULE_SCORE = MIN_SHOW_SCORE    # only leads with at least this keyword score get the AI check
 AI_MAX_POSTS = int(os.environ.get("AI_MAX_POSTS", "120"))       # AI checks per run
 AI_MAX_MINUTES = float(os.environ.get("AI_MAX_MINUTES", "20"))  # stop AI checks after this
 BATCH = 200
@@ -252,7 +253,7 @@ def run(db, fetchers=None, now=None):
                               "reason": "AI: " + reason if reason else x["reason"], "scored_by": "llm"})
                 done += 1
             print(f"  AI checked {done} lead(s) in {int(time.time() - started)}s "
-                  f"({rejected} rejected as not a buyer, {skipped} failed).")
+                  f"({rejected} scored below {MIN_SHOW_SCORE} and removed, {skipped} failed).")
 
         # 3) first-message drafts for the best leads, then save
         drafts_left, total_new, made, fails = MAX_DRAFTS, 0, 0, 0
@@ -294,9 +295,12 @@ def run(db, fetchers=None, now=None):
             without = [x for x in out if "angle" not in x]
             db.upsert("matches", without, "project_id,url")
             db.upsert("matches", with_angle, "project_id,url")
-            shown = [x for x in out if x["score"] > 0]
+            shown = [x for x in out if x["score"] >= MIN_SHOW_SCORE]
             print(f"{p['name']}: {len(shown)} leads shown "
                   f"({sum(1 for x in shown if (p['slug'], x['url']) not in existing)} new).")
+
+        # keyword-only leads below the minimum are not kept (this also removes ones that got older and dropped)
+        db.delete("matches", {"scored_by": "eq.rules", "score": f"lt.{MIN_SHOW_SCORE}"})
 
     db.update("app_status", {"id": "eq.1"}, {"last_run": iso(now), "note": f"{len(projects)} products"})
 
