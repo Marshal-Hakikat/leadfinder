@@ -31,6 +31,32 @@ AI_MAX_MINUTES = float(os.environ.get("AI_MAX_MINUTES", "20"))  # stop AI checks
 BATCH = 200
 
 
+def ai_final(base, created_ts, text, now=None):
+    """Turn the AI's own score into the shown score: older posts lose points, like keyword leads.
+    The AI's own score is kept inside the reason text so it can be re-aged every day."""
+    if base <= AI_REJECT_MAX:
+        return 0, "AI rejected: " + (text or "not a buyer")
+    age = ((now or time.time()) - created_ts) / 86400 if created_ts else 0
+    minus, note = (4, "older than 2 months") if age > 60 else (2, "older than 1 month") if age > 30 else (0, "")
+    final = base - minus
+    reason = f"AI: {text} (AI score {base}" + (f", -{minus} {note}" if minus else "") + ")"
+    return (final if final >= MIN_SHOW_SCORE else 0), reason
+
+
+AI_BASE_RE = __import__("re").compile(r"^AI: (.*) \(AI score (\d+)(?:, [^)]*)?\)$", __import__("re").S)
+
+
+def ai_base(old):
+    """Read back the AI's own score and reason from a saved lead."""
+    reason = old.get("reason") or ""
+    m = AI_BASE_RE.match(reason)
+    if m:
+        return int(m.group(2)), m.group(1)
+    if reason.startswith("AI rejected"):
+        return 0, reason[len("AI rejected: "):]
+    return int(old.get("score") or 0), (reason[4:] if reason.startswith("AI: ") else reason)  # saved before this change
+
+
 def iso(ts):
     return dt.datetime.fromtimestamp(ts, dt.timezone.utc).isoformat() if ts else None
 
@@ -210,9 +236,10 @@ def run(db, fetchers=None, now=None):
             for r in recent:
                 old = judged.get((p["slug"], r["url"]))
                 if old:                 # the AI already judged this one; keep its answer
-                    sc = old["score"] if old["score"] > AI_REJECT_MAX else 0   # rejected earlier: keep hidden
+                    base, text = ai_base(old)
+                    sc, why = ai_final(base, to_ts(r["created_at"]), text, now)
                     out.append({"project_id": p["slug"], "url": r["url"], "score": sc,
-                                "intent": old["intent"], "reason": old["reason"], "scored_by": "llm",
+                                "intent": old["intent"], "reason": why, "scored_by": "llm",
                                 "_post": r, "_judged": True})
                     continue
                 score, kind, reason = lf.rule_score(p, r["title"], r["body"], to_ts(r["created_at"]))
@@ -242,15 +269,12 @@ def run(db, fetchers=None, now=None):
                 if not res:
                     skipped += 1
                     continue
-                score, kind, reason = res
-                if score <= AI_REJECT_MAX:
-                    # kept with score 0 so the website never shows it and the next run does not add it again
-                    x.update({"score": 0, "intent": "discussion",
-                              "reason": "AI rejected: " + (reason or "not a buyer"), "scored_by": "llm"})
-                    rejected += 1
-                else:
-                    x.update({"score": score, "intent": kind or x["intent"],
-                              "reason": "AI: " + reason if reason else x["reason"], "scored_by": "llm"})
+                base, kind, reason = res
+                # a score of 0 means hidden; it stays saved so the next run does not add it again
+                score, why = ai_final(base, to_ts(x["_post"]["created_at"]), reason or "likely buyer", now)
+                x.update({"score": score, "intent": (kind or x["intent"]) if score else "discussion",
+                          "reason": why, "scored_by": "llm"})
+                rejected += score == 0
                 done += 1
             print(f"  AI checked {done} lead(s) in {int(time.time() - started)}s "
                   f"({rejected} scored below {MIN_SHOW_SCORE} and removed, {skipped} failed).")
