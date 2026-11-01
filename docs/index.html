@@ -4,8 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lead Finder</title>
-<meta http-equiv="refresh" content="0; url=app/">
-<link rel="canonical" href="app/">
+<script>
+  // Keep the part after # and ? (login, reset and confirm links carry their token there)
+  location.replace("app/" + location.search + location.hash);
+</script>
+<noscript><meta http-equiv="refresh" content="0; url=app/"></noscript>
 <style>body{font-family:system-ui,sans-serif;background:#F2F8FF;color:#0B2540;display:grid;place-items:center;min-height:100vh;margin:0}a{color:#0A6CFF}</style>
 </head>
 <body><p>Opening <a href="app/">Lead Finder</a>…</p></body>
