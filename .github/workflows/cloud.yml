@@ -29,17 +29,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 12
         shell: bash
-        run: |
-          fail() { echo "::warning title=Free AI model::$1"; exit 1; }
-          curl -fsSL https://ollama.com/install.sh -o ollama-install.sh || fail "could not download the installer"
-          sh ollama-install.sh > ollama.log 2>&1 || fail "install failed: $(tail -c 300 ollama.log | tr '\n' ' ')"
-          for i in $(seq 1 30); do curl -sf http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 2; done
-          curl -sf http://127.0.0.1:11434/api/tags >/dev/null || fail "the AI server did not start"
-          ollama pull "$LOCAL_MODEL" > pull.log 2>&1 || fail "download of $LOCAL_MODEL failed: $(tail -c 300 pull.log | tr '\r\n' '  ')"
-          curl -sf http://127.0.0.1:11434/api/generate \
-            -d "{\"model\":\"$LOCAL_MODEL\",\"prompt\":\"Reply with OK\",\"stream\":false}" > warm.json \
-            || fail "the model did not answer a test question"
-          echo "Model ready: $LOCAL_MODEL"
+        run: bash scripts/start_ai.sh "$LOCAL_MODEL"
 
       - name: Find, check and save leads
         shell: bash
@@ -63,5 +53,5 @@ jobs:
         shell: bash
         run: |
           [ -f worker.log ] || exit 0
-          grep -E "posts$|AI check|Drafts:|leads shown|calls used|active product" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
+          grep -E "posts$|AI check|Drafts:|leads shown|calls used|active product|Weekly summary" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
           grep -E "^ *!" worker.log | sort | uniq -c | sort -rn | head -8 | sed 's/^ *//' | while read -r l; do echo "::warning title=Lead run problem::$l"; done

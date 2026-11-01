@@ -54,6 +54,10 @@ textarea{min-height:92px;resize:vertical}
 .draft textarea{width:100%;box-sizing:border-box;margin:6px 0;font:inherit;font-size:15px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit;resize:vertical}.draft .row{gap:8px;flex-wrap:wrap;align-items:center}.draft .dh .hint{margin-left:4px}
 .snip{color:var(--muted);font-size:15px;margin:8px 0 12px}
 .err{color:var(--bad)}.ok{color:var(--good)}
+.aihelp{background:var(--soft);border-radius:12px;padding:12px 14px;margin:10px 0 4px}.aihelp p{margin:8px 0 0}
+.sg{margin:10px 0 0}.sg strong{display:block;font-size:14px;margin-bottom:6px}
+button.chip{border-radius:99px;padding:4px 12px;font-size:14px;font-weight:600}button.chip.on{opacity:.55;cursor:default}
+.weekly{border-left:4px solid var(--accent)}.weekly p{margin:6px 0 0;font-size:16px;line-height:1.5}
 .count{font-size:14px;color:var(--muted)}.count.over{color:var(--bad);font-weight:700}
 table{width:100%;border-collapse:collapse;font-size:15px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
 .auth{max-width:400px;margin:48px auto}
@@ -396,6 +400,7 @@ function drawForm(app, p) {
   }
   add("Product name", "", name);
   add("What problem does it solve?", "in plain words, who it is for", desc);
+  f.appendChild(aiHelper({ name: name, desc: desc, ctx: ctx, kw: kw, comp: comp, exc: exc, subs: subs, ses: ses }));
   add("Keywords", "one per line, up to 12: words people use when they have the problem", kw, kwCount);
   add("Context word", "optional, for example: salesforce or restaurant", ctx);
   add("Competitors", "optional, up to 10: a post that mentions one scores high", comp);
@@ -431,6 +436,80 @@ function drawForm(app, p) {
   app.appendChild(f); count();
 }
 
+/* ---------- AI keyword helper (on the product form) ---------- */
+function aiHelper(F) {
+  var box = el("div", { class: "aihelp", id: "aihelp" });
+  var out = el("div", { id: "aiout" });
+  var timer = null;
+  var btn = el("button", { type: "button", id: "aisuggest", text: "\u2728 Suggest keywords with AI", onclick: ask });
+  box.appendChild(el("div", { class: "row" }, [btn, el("span", { class: "hint", text: "Fill in the name and the problem first. The AI suggests keywords, competitors and communities." })]));
+  box.appendChild(out);
+  function status(t, bad) { clear(out); out.appendChild(el("p", { class: bad ? "err" : "hint", role: "status", text: t })); }
+  async function ask() {
+    var n = F.name.value.trim(), d = F.desc.value.trim();
+    if (!n) return status("Type the product name first.", true);
+    if (d.length < 20) return status("Describe the problem first (at least 20 characters).", true);
+    btn.disabled = true;
+    var res = await sb.from("keyword_suggestions").insert({ name: n.slice(0, 80), description: d.slice(0, 600), context: F.ctx.value.trim().slice(0, 60) }).select("id").single();
+    btn.disabled = false;
+    if (res.error) return status(nice(res.error), true);
+    wait(res.data.id);
+  }
+  function wait(id) {
+    status("The AI is working on it. Suggestions appear here in about 10 to 15 minutes. You can keep editing, or leave and come back to this page.");
+    clearTimeout(timer);
+    (async function poll() {
+      if (!document.body.contains(box)) return;
+      var r = await sb.from("keyword_suggestions").select("id,status,result").eq("id", id).maybeSingle();
+      if (!document.body.contains(box)) return;
+      if (r.data && r.data.status === "done") return show(r.data.result);
+      if (r.data && r.data.status === "failed") return status("The AI could not answer this time. Please try again.", true);
+      timer = setTimeout(poll, 20000);
+    })();
+  }
+  function show(res) {
+    clear(out);
+    out.appendChild(el("p", { class: "hint", text: "AI suggestions. Click one to add it, or use Add all. Please check them: the AI can be wrong, especially about community names." }));
+    [["Keywords", "keywords", F.kw, "\n", 12], ["Competitors", "competitors", F.comp, "\n", 10],
+     ["Reddit communities", "subreddits", F.subs, "\n", 8], ["Stack Exchange sites", "se_sites", F.ses, ", ", 4],
+     ["Words to avoid", "exclude_words", F.exc, "\n", 10]].forEach(function (g) {
+      var items = (res && res[g[1]]) || [], field = g[2], sep = g[3], max = g[4];
+      if (!items.length) return;
+      var row = el("div", { class: "row sugg" }), note = el("span", { class: "hint" });
+      function has(x) { return lines(field.value).some(function (y) { return y.toLowerCase() === String(x).toLowerCase(); }); }
+      function addOne(x) {
+        if (has(x)) return true;
+        var cur = lines(field.value);
+        if (cur.length >= max) { note.textContent = "Limit reached (" + max + ")."; return false; }
+        cur.push(x); field.value = cur.join(sep); field.dispatchEvent(new Event("input"));
+        return true;
+      }
+      function paint() {
+        clear(row);
+        items.forEach(function (x) {
+          var on = has(x);
+          row.appendChild(el("button", { type: "button", class: "chip" + (on ? " on" : ""), disabled: on, text: (on ? "\u2713 " : "+ ") + x, onclick: function () { addOne(x); paint(); } }));
+        });
+        row.appendChild(el("button", { type: "button", class: "link", text: "Add all", onclick: function () { items.every(addOne); paint(); } }));
+        row.appendChild(note);
+      }
+      out.appendChild(el("div", { class: "sg" }, [el("strong", { text: g[0] }), row]));
+      paint();
+    });
+  }
+  // Show the latest answer (or keep waiting) when the page opens
+  (async function () {
+    var q = await sb.from("keyword_suggestions").select("id,name,status,result,created_at")
+      .gte("created_at", new Date(Date.now() - 86400000).toISOString()).order("created_at", { ascending: false }).limit(5);
+    if (q.error) { box.hidden = true; return; }   // feature not set up in the database yet
+    var nm = F.name.value.trim().toLowerCase();
+    var last = (q.data || []).filter(function (x) { return !nm || x.name.toLowerCase() === nm; })[0];
+    if (!last || !document.body.contains(box)) return;
+    if (last.status === "pending") wait(last.id); else if (last.status === "done") show(last.result);
+  })();
+  return box;
+}
+
 /* ---------- leads ---------- */
 var STATUSES = ["replied", "interested", "won", "ignored"];
 async function drawLeads(app, pid) {
@@ -451,6 +530,14 @@ async function drawLeads(app, pid) {
   bar.appendChild(ps); bar.appendChild(min); bar.appendChild(typ);
   bar.appendChild(el("label", { style: "margin:0;font-weight:400" }, [hide, " hide ignored"])); bar.appendChild(csv);
   app.appendChild(bar);
+  var week = el("div", { id: "weekly" }); app.appendChild(week);
+  (async function () {
+    var w = await sb.from("weekly_summaries").select("week_start,summary,stats").eq("project_id", cur.id).order("week_start", { ascending: false }).limit(1);
+    var d = w && !w.error && w.data && w.data[0];
+    if (!d || !d.summary) return;
+    var when = new Date(d.week_start + "T12:00:00Z").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    week.appendChild(el("div", { class: "card weekly" }, [el("div", { class: "hint", text: "Weekly summary \u00b7 week of " + when }), el("p", { text: d.summary })]));
+  })();
   var list = el("div", { id: "list" }); app.appendChild(list);
   var rows = [];
   function paint() {

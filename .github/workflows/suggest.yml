@@ -1,0 +1,56 @@
+name: AI keyword suggestions
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes (GitHub may start it a few minutes late)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keyword-suggestions
+  cancel-in-progress: false
+
+jobs:
+  suggest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      LOCAL_MODEL: ${{ vars.LEADFINDER_LOCAL_MODEL || 'qwen2.5:3b' }}
+    steps:
+      # Quick check first, so most runs finish in a few seconds
+      - name: Any requests waiting?
+        id: check
+        shell: bash
+        run: |
+          n=$(curl -sf "$SUPABASE_URL/rest/v1/keyword_suggestions?status=eq.pending&select=id&limit=1" \
+                -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+              | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
+          echo "Requests waiting: $n"
+          echo "pending=$n" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.pending != '0'
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.pending != '0'
+        with:
+          python-version: "3.12"
+      - if: steps.check.outputs.pending != '0'
+        run: pip install -r requirements.txt
+
+      - name: Start the free AI model
+        id: ai
+        if: steps.check.outputs.pending != '0'
+        continue-on-error: true
+        timeout-minutes: 12
+        run: bash scripts/start_ai.sh "$LOCAL_MODEL"
+
+      - name: Write suggestions
+        if: steps.check.outputs.pending != '0'
+        run: python -u suggest_worker.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LEADFINDER_LOCAL_MODEL: ${{ steps.ai.outcome == 'success' && env.LOCAL_MODEL || '' }}

@@ -191,6 +191,69 @@ def draft_message(proj, title, body, good_titles=()):
 
 
 # --------------------------------------------------------------------------
+# Weekly summary: made once a week (on the first run of each week, Monday UTC)
+# --------------------------------------------------------------------------
+def _source_name(src):
+    src = src or ""
+    if src.startswith("reddit/"):
+        return src[len("reddit/"):]              # r/salesforce
+    if src.startswith(("mastodon/", "dev.to/")):
+        return src.split("/")[0].title() if src.startswith("mastodon") else "Dev.to"
+    return {"hackernews": "Hacker News", "bluesky": "Bluesky", "stackoverflow": "Stack Overflow"}.get(
+        src, src.replace(".stackexchange", " Stack Exchange").replace("lemmy/", "Lemmy "))
+
+
+def ai_topic(proj, titles):
+    if not titles or not lf.ai_available():
+        return None
+    prompt = f"""Product: {proj['description']}
+These are titles of forum posts found this week by people who might need it:
+""" + "\n".join(f"- {t[:150]}" for t in titles[:20]) + """
+
+In ONE plain sentence (at most 25 words) say what these people mostly ask about or struggle with.
+Start with "People mostly". No lists, no quotes."""
+    text = (lf.ai_ask(prompt, max_tokens=80) or "").strip().strip('"').split("\n")[0].strip()
+    return text[:220] if text.lower().startswith("people") else None
+
+
+def weekly_summaries(db, projects, now):
+    from collections import Counter
+    today = dt.datetime.fromtimestamp(now, dt.timezone.utc).date()
+    week_start = (today - dt.timedelta(days=today.weekday())).isoformat()
+    have = {r["project_id"] for r in db.select("weekly_summaries",
+                                                {"select": "project_id", "week_start": f"eq.{week_start}"})}
+    since = iso(now - 7 * 86400)
+    for p in projects:
+        if p["slug"] in have:
+            continue
+        rows = db.select("matches", {"select": "score,intent,first_seen,raw_posts(title,source)",
+                                     "project_id": f"eq.{p['slug']}", "first_seen": f"gte.{since}",
+                                     "score": f"gte.{MIN_SHOW_SCORE}", "order": "score.desc"})
+        acts = db.select("lead_status", {"select": "status", "project_id": f"eq.{p['slug']}",
+                                         "updated_at": f"gte.{since}", "status": "not.is.null"})
+        posts = [r.get("raw_posts") or {} for r in rows]
+        strong = sum(1 for r in rows if r["score"] >= 7)
+        top = Counter(_source_name(x.get("source")) for x in posts).most_common(3)
+        did = Counter(a["status"] for a in acts)
+        stats = {"leads": len(rows), "strong": strong, "top_sources": top,
+                 "types": Counter(r.get("intent") or "" for r in rows).most_common(),
+                 "replied": did.get("replied", 0), "interested": did.get("interested", 0), "won": did.get("won", 0)}
+        if rows:
+            text = f"Last 7 days: {len(rows)} new lead{'s' if len(rows) != 1 else ''}, {strong} strong (7+)"
+            text += f", most from {top[0][0]}." if top and top[0][0] else "."
+            topic = ai_topic(p, [x.get("title") or "" for x in posts if x.get("title")])
+            if topic:
+                text += " " + topic.rstrip(".") + "."
+        else:
+            text = "Last 7 days: no new leads. Try adding more keywords or communities on My products."
+        if stats["replied"] or stats["won"]:
+            text += f" You replied to {stats['replied']} and won {stats['won']}."
+        db.upsert("weekly_summaries", [{"project_id": p["slug"], "week_start": week_start, "stats": stats,
+                                        "summary": text}], "project_id,week_start")
+        print(f"Weekly summary for {p['name']}: {text}")
+
+
+# --------------------------------------------------------------------------
 def run(db, fetchers=None, now=None):
     now = now or time.time()
     rows = db.select("projects", {"select": "*", "active": "eq.true"})
@@ -325,6 +388,12 @@ def run(db, fetchers=None, now=None):
 
         # keyword-only leads below the minimum are not kept (this also removes ones that got older and dropped)
         db.delete("matches", {"scored_by": "eq.rules", "score": f"lt.{MIN_SHOW_SCORE}"})
+
+    if projects:
+        try:
+            weekly_summaries(db, projects, now)
+        except Exception as e:   # never let the summary stop the daily job
+            print(f"  ! weekly summary skipped: {e}")
 
     db.update("app_status", {"id": "eq.1"}, {"last_run": iso(now), "note": f"{len(projects)} products"})
 
