@@ -386,11 +386,17 @@ def fetch_redditapis(projects):
     if not key:
         return []
     cap = int(os.environ.get("REDDITAPIS_MAX_CALLS") or 30)
-    jobs, seen, out = [], set(), []
+    # Each product gets its own list (best search words first, every community covered early),
+    # then the lists take turns, so one product cannot use up all the calls.
+    per_product = []
     for p in projects:
         s = p["sources"]
-        for sub in s["reddit_subreddits"]:
-            jobs += [(sub, q) for q in s["queries"]]
+        per_product.append([(sub, q) for q in s["queries"] for sub in s["reddit_subreddits"]])
+    jobs, seen, out = [], set(), []
+    for i in range(max([len(x) for x in per_product] or [0])):
+        for lst in per_product:
+            if i < len(lst):
+                jobs.append(lst[i])
     calls = 0
     for sub, q in jobs:
         if (sub.lower(), q.lower()) in seen:

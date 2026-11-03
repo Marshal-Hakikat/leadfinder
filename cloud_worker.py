@@ -19,6 +19,7 @@ import time
 import requests
 
 import leadfinder as lf
+import lead_emails
 
 MAX_QUERIES = 8          # search words per product per source (keeps the run short)
 MAX_DRAFTS = int(os.environ.get("MAX_DRAFTS", "20"))   # AI first-message drafts per run
@@ -384,7 +385,8 @@ def run(db, fetchers=None, now=None):
             db.upsert("matches", with_angle, "project_id,url")
             shown = [x for x in out if x["score"] >= MIN_SHOW_SCORE]
             print(f"{p['name']}: {len(shown)} leads shown "
-                  f"({sum(1 for x in shown if (p['slug'], x['url']) not in existing)} new).")
+                  f"({sum(1 for x in shown if (p['slug'], x['url']) not in existing)} new); "
+                  f"{sum(1 for x in out if x['scored_by'] == 'rules' or x['score'] > 0)} posts matched its keywords.")
 
         # keyword-only leads below the minimum are not kept (this also removes ones that got older and dropped)
         db.delete("matches", {"scored_by": "eq.rules", "score": f"lt.{MIN_SHOW_SCORE}"})
@@ -394,6 +396,12 @@ def run(db, fetchers=None, now=None):
             weekly_summaries(db, projects, now)
         except Exception as e:   # never let the summary stop the daily job
             print(f"  ! weekly summary skipped: {e}")
+
+    if rows:
+        try:
+            lead_emails.send_all(db, rows, iso(now), db.base.rsplit("/rest/v1/", 1)[0], db.h["apikey"])
+        except Exception as e:   # never let email stop the daily job
+            print(f"  ! emails skipped: {e}")
 
     db.update("app_status", {"id": "eq.1"}, {"last_run": iso(now), "note": f"{len(projects)} products"})
 

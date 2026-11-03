@@ -45,6 +45,11 @@ jobs:
           LEADFINDER_USER_AGENT: ${{ secrets.LEADFINDER_USER_AGENT }}
           BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           LEADFINDER_LOCAL_MODEL: ${{ steps.ai.outcome == 'success' && env.LOCAL_MODEL || '' }}
 
       # Short summary shown at the top of the run page (also readable through the GitHub API)
@@ -53,5 +58,5 @@ jobs:
         shell: bash
         run: |
           [ -f worker.log ] || exit 0
-          grep -E "posts$|AI check|Drafts:|leads shown|calls used|active product|Weekly summary" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
+          grep -E "posts$|AI check|Drafts:|leads shown|calls used|active product|Weekly summary|Emails:|email sent|email:" worker.log | head -15 | sed 's/^ *//' | paste -sd '|' | sed 's/|/ | /g' | xargs -0 -I{} echo "::notice title=Lead run::{}"
           grep -E "^ *!" worker.log | sort | uniq -c | sort -rn | head -8 | sed 's/^ *//' | while read -r l; do echo "::warning title=Lead run problem::$l"; done
