@@ -392,6 +392,7 @@ function drawForm(app, p) {
   var subs = el("textarea", { id: "subs" }); subs.value = p.subreddits.join("\n");
   var ses = el("input", { id: "ses", value: p.se_sites.join(", ") });
   var small = el("input", { type: "checkbox", id: "small", style: "width:auto" }); small.checked = p.small_companies;
+  var mail = el("input", { type: "checkbox", id: "mail", style: "width:auto" }); mail.checked = p.email_alerts !== false;
   function count() { var n = lines(kw.value).length; kwCount.textContent = n + " of 12"; kwCount.className = "count" + (n > 12 ? " over" : ""); }
   kw.addEventListener("input", count);
   function add(label, hint, node, extra) {
@@ -409,6 +410,7 @@ function drawForm(app, p) {
   add("Reddit communities", "up to 8, one per line, for example: restaurateur", subs);
   add("Stack Exchange sites", "up to 4, separated by commas, for example: salesforce", ses);
   f.appendChild(el("label", {}, [small, " Favour small companies and startups"]));
+  f.appendChild(el("label", {}, [mail, " Email me new leads every day", el("span", { class: "hint", text: " (only on days with new leads)" })]));
   packSel.addEventListener("change", function () {
     var k = packSel.value, x = PACKS[k];
     if (!name.value) name.value = x.name; desc.value = x.description; ctx.value = x.context;
@@ -425,9 +427,14 @@ function drawForm(app, p) {
         competitors: lines(comp.value), exclude_words: lines(exc.value),
         examples: ex.value.split(/^\s*---\s*$/m).map(function (s) { return s.trim(); }).filter(Boolean),
         subreddits: lines(subs.value), se_sites: lines(ses.value), small_companies: small.checked,
+        email_alerts: mail.checked,
         pack: isNew ? packSel.value : p.pack
       };
       var res = isNew ? await sb.from("projects").insert(row) : await sb.from("projects").update(row).eq("id", p.id);
+      if (res.error && /email_alerts/.test(res.error.message || "")) {   // database not updated for emails yet
+        delete row.email_alerts;
+        res = isNew ? await sb.from("projects").insert(row) : await sb.from("projects").update(row).eq("id", p.id);
+      }
       if (res.error) { state.draft = null; say(nice(res.error), true); return render(); }
       say("Saved. The daily search will use these words from the next run."); go("#/products");
     } }),
